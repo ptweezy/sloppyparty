@@ -154,7 +154,7 @@ _ = (argparse, threading)
 
 USED4SEC = {"usedforsecurity": False} if sys.version_info > (3, 9) else {}
 
-ALL_COOKIES = "k304 no304 js idxh dots cppwd cppws".split()
+ALL_COOKIES = "cplng cppwd cppws dots idxh js k304 no304".split()
 
 BADXFF = " due to dangerous misconfiguration (the http-header specified by --xff-hdr was received from an untrusted reverse-proxy)"
 BADXFF2 = ". Some copyparty features are now disabled as a safety measure.\n\n\n"
