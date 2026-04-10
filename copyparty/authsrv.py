@@ -3258,6 +3258,7 @@ class AuthSrv(object):
                 "idxh": int(self.args.ih),
                 "dutc": not self.args.localtime,
                 "dfszf": self.args.ui_filesz.strip("-"),
+                "dgauto": self.args.gauto,
                 "themes": self.args.themes,
                 "turbolvl": self.args.turbo,
                 "nosubtle": self.args.nosubtle,

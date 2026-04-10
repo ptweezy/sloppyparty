@@ -2,7 +2,7 @@
 
 var J_BRW = 1;
 
-if (window.rw_edit === undefined)
+if (window.dgauto === undefined)
 	alert('FATAL ERROR: receiving stale data from the server; this may be due to a broken reverse-proxy (stuck cache). Try restarting copyparty and press CTRL-SHIFT-R in the browser');
 
 var XHR = XMLHttpRequest;
@@ -6015,13 +6015,13 @@ var thegrid = (function () {
 		pbar.onresize();
 		vbar.onresize();
 	});
-	bcfg_bind(r, 'gaen', 'gauto', false, function(v) {
+	bcfg_bind(r, 'gaen', 'gauto', !!dgauto, function(v) {
 		if (r.en && sread("griden") != 1) {
 			r.en = false;
 			r.setvis(true);
 		}
 	});
-	ebi('ga_thresh').value = r.gathr = icfg_get('ga_thresh', 70);
+	ebi('ga_thresh').value = r.gathr = icfg_get('ga_thresh', dgauto || 70);
 	ebi('ga_thresh').oninput = function (e) {
 		var n = parseInt(this.value);
 		swrite('ga_thresh', r.gathr = (isNum(n) ? n : 0) || 70);

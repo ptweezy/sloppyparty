@@ -1868,6 +1868,7 @@ def add_ui(ap, retry: int):
     ap2.add_argument("--gsel", action="store_true", help="select files in grid by ctrl-click (volflag=gsel)")
     ap2.add_argument("--localtime", action="store_true", help="default to local timezone instead of UTC")
     ap2.add_argument("--ui-filesz", metavar="FMT", type=u, default="1", help="default filesize format; one of these: 0, 1, 2, 2c, 3, 3c, 4, 4c, 5, 5c, fuzzy (see UI)")
+    ap2.add_argument("--gauto", metavar="PERCENT", type=int, default=0, help="switch to gridview if more than \033[33mPERCENT\033[0m of files are pics/vids; 0=disabled")
     ap2.add_argument("--rcm", metavar="TXT", default="yy", help="rightclick-menu; two yes/no options: 1st y/n is enable-custom-menu, 2nd y/n is enable-double")
     ap2.add_argument("--lang", metavar="LANG", type=u, default="eng", help="language, for example \033[32meng\033[0m / \033[32mnor\033[0m / ...")
     ap2.add_argument("--glang", action="store_true", help="guess the browser's default language, otherwise fall back to \033[33m--lang\033[0m")
