@@ -6,7 +6,12 @@ all:
 	
 	rm -rf i
 	mkdir i
-	tar -cC../.. dist/copyparty-sfx.py bin/mtag | tar -xvCi
+	tar -cC../../dist    copyparty-sfx.py          | tar -xvCi
+	tar -cC../..         bin/mtag                  | tar -xvCi
+    
+#   # use stock ffmpeg because ./base/Makefile requires podman;
+#   # beware: https://github.com/9001/copyparty/blob/hovudstraum/docs/bad-codecs.md
+	touch i/stock_ffmpeg
 	
 	docker build -t copyparty/min:latest -f Dockerfile.min .
 	echo 'scale=1;'`docker save copyparty/min:latest | pigz -c | wc -c`/1024/1024 | bc

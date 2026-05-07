@@ -14,8 +14,11 @@ ised() {
 	tmv "$2"
 }
 
+# use stock ffmpeg if requested
+echo $1 | grep -qE 'ac|iv|dj' && [ -e "/z/stock_ffmpeg" ] && apk add ffmpeg
+
 # use custom ffmpeg if relevant
-echo $1 | grep -qE 'ac|iv|dj' && (
+echo $1 | grep -qE 'ac|iv|dj' && [ ! -e "/z/stock_ffmpeg" ] && (
   cp -pv /z/packages/*.pub /etc/apk/keys/
   cd /z/packages/$(cat /etc/apk/arch)
   apk add ./ffmpeg-*.apk
