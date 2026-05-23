@@ -21,6 +21,8 @@ ENV     ver_hashwasm=4.12.0 \
 # download;
 # the scp url is regular latin from https://fonts.googleapis.com/css2?family=Source+Code+Pro&display=swap
 RUN     mkdir -p /z/dist/no-pk \
+        && wget https://ocv.me/dev/fonts/orbitron.woff2 -O /z/dist/no-pk/orbitron.woff2 \
+        && sha512sum /z/dist/no-pk/orbitron.woff2 | tee /dev/stderr | grep -q b36a69a1b483ca735a3e7d026cdc5e993b8359bbf69b05deadc369fa759f88fe6087bbbbc0be51e62daf034c090df7ee096e5b07884c494aebf56db0e2bc53f7 \
         && wget https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6sJ7fM7PqlPevW.woff2 -O scp.woff2 \
         && apk add \
                 bash brotli cmake make g++ git gzip lame npm patch pigz \
