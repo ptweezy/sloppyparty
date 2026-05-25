@@ -860,7 +860,7 @@ class ThumbSrv(object):
         bscale = scale.format(*list(res)).encode("utf-8")
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner"
@@ -1001,7 +1001,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1080,7 +1080,7 @@ class ThumbSrv(object):
 
             # fmt: off
             cmd = [
-                b"ffmpeg",
+                HAVE_FFMPEG,
                 b"-nostdin",
                 b"-v", b"error",
                 b"-hide_banner",
@@ -1112,7 +1112,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1148,7 +1148,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1177,7 +1177,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1212,7 +1212,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1273,7 +1273,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1314,7 +1314,7 @@ class ThumbSrv(object):
 
         # fmt: off
         cmd = [
-            b"ffmpeg",
+            HAVE_FFMPEG,
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
@@ -1340,7 +1340,7 @@ class ThumbSrv(object):
             self.log("conv2 caf-transcode; dur=%d sz=%d q=%s" % (dur, sz, zs), 6)
             # fmt: off
             cmd = [
-                b"ffmpeg",
+                HAVE_FFMPEG,
                 b"-nostdin",
                 b"-v", b"error",
                 b"-hide_banner",
@@ -1361,7 +1361,7 @@ class ThumbSrv(object):
             self.log("conv2 caf-remux; dur=%d sz=%d" % (dur, sz), 6)
             # fmt: off
             cmd = [
-                b"ffmpeg",
+                HAVE_FFMPEG,
                 b"-nostdin",
                 b"-v", b"error",
                 b"-hide_banner",

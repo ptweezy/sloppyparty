@@ -3225,6 +3225,8 @@ enable [smb](#smb-server) support (**not** recommended): `impacket==0.13.0`
 
 to install FFmpeg on Windows, grab [a recent build](https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z) -- you need `ffmpeg.exe` and `ffprobe.exe` from inside the `bin` folder; copy them into `C:\Windows\System32` or any other folder that's in your `%PATH%`
 
+if your ffmpeg/ffprobe binaries have nonstandard names -- such as `ffmpeg8` (macports) -- set environment variables `PRTY_FFMPEG_BIN` and `PRTY_FFPROBE_BIN` to the corret name (or full path)
+
 
 ### dependency chickenbits
 
