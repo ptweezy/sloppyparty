@@ -70,6 +70,7 @@ from .util import (
     ub64enc,
     unhumanize,
     vjoin,
+    vjoins,
     vsplit,
     w8b64dec,
     w8b64enc,
@@ -3190,7 +3191,7 @@ class Up2k(object):
                 c2 = None
                 for cur, dp_dir, dp_fn in lost:
                     t = "forgetting desynced db entry: %r"
-                    self.log(t % ("/" + vjoin(vjoin(vfs.vpath, dp_dir), dp_fn)))
+                    self.log(t % ("/" + vjoins(vfs.vpath, dp_dir, dp_fn)))
                     self.db_rm(cur, vfs.flags, dp_dir, dp_fn, cj["size"])
                     if c2 and c2 != cur:
                         c2.connection.commit()

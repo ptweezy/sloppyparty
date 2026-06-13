@@ -2679,6 +2679,10 @@ def vjoin(rd: str, fn: str) -> str:
         return rd or fn
 
 
+def vjoins(*a: str) -> str:
+    return "/".join([x for x in a if x])
+
+
 # url-join
 def ujoin(rd: str, fn: str) -> str:
     if rd and fn:
