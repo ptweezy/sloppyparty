@@ -101,7 +101,8 @@ echo ok
 #   22:50 ppc64le
 # 1:53:25 summa summarum
 
-# for a in version muxers demuxers devices decoders encoders filters pix_fmts layouts sample_fmts ; do ffmpeg -hide_banner -$a; done | nc 192.168.123.1 4321
+# for a in version muxers demuxers devices decoders encoders filters pix_fmts layouts sample_fmts bsfs ; do ffmpeg -hide_banner -$a; done | nc 192.168.123.1 4321
+# podman run --rm -it --entrypoint /bin/ash copyparty/ac:latest -c 'for a in version muxers demuxers devices decoders encoders filters pix_fmts layouts sample_fmts bsfs ; do ffmpeg -hide_banner -$a; done' > ffmpeg-features.txt
 
 # v=3.24-stable
 # echo -n https://dl-cdn.alpinelinux.org/v${v%-*}/releases/x86_64/ >aver
