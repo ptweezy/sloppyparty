@@ -2802,6 +2802,13 @@ class AuthSrv(object):
             zs = "select %s from up where rd=? and fn=?" % (", ".join(up_q),)
             vol.flags["ls_q_m"] = (zs if up_m else "", up_m)
 
+        for tab in (rhisttab, rdbpaths):
+            for ap, vn in tab.items():
+                if "show_hist" not in vn.flags and (
+                    ap == os.path.join(vn.realpath, ".hist")
+                ):
+                    vn.add("", ".hist", ".hist")
+
         vfs.all_fvols = {
             zs: vol for zs, vol in vfs.all_vols.items() if "is_file" in vol.flags
         }

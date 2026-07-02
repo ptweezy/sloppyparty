@@ -7162,7 +7162,7 @@ class HttpCli(object):
         # [num-backups, most-recent, hist-path]
         hist: dict[str, tuple[int, float, str]] = {}
         try:
-            if vf["md_hist"] != "s":
+            if "show_hist" not in vf or vf["md_hist"] != "s":
                 raise Exception()
             histdir = os.path.join(fsroot, ".hist")
             ptn = RE_MDV
