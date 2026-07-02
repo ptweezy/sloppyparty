@@ -123,6 +123,7 @@ def vf_vmap() -> dict[str, str]:
         "lg_sba",
         "md_sba",
         "md_hist",
+        "md_nhist",
         "nrand",
         "u2ow",
         "og_desc",
@@ -407,7 +408,8 @@ flagcats = {
     "textfiles": {
         "rw_edit=md,txt": "only require read+write to edit .md and .txt",
         "md_no_br": "newline only on double-newline or two tailing spaces",
-        "md_hist": "where to put markdown backups; s=subfolder, v=volHist, n=nope",
+        "md_hist": "where to put text-editor backups; s=subfolder, v=volHist, n=nope",
+        "md_nhist=99": "how many text-editor backups to keep",
         "show_hist": "allow browsing the .hist folder (old textfiles)",
         "exp": "enable textfile expansion; see --help-exp",
         "exp_md": "placeholders to expand in markdown files; see --help",
