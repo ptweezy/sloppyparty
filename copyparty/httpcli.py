@@ -4174,7 +4174,7 @@ class HttpCli(object):
                 atomic_move(self.log, fp, os.path.join(dp, mfile2), vfs.flags)
                 nmax = dbv.flags["md_nhist"]
                 if nmax:
-                    zs = "%s\.[0-9]+\.[0-9]{3}\.%s"
+                    zs = r"%s\.[0-9]+\.[0-9]{3}\.%s"
                     ptn = re.compile(zs % (re.escape(fname), re.escape(fext)))
                     zsl = [x for x in os.listdir(dp) if ptn.match(x)]
                     zsl.sort(reverse=True)
