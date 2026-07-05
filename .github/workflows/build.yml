@@ -144,7 +144,9 @@ jobs:
           docker run --rm --platform ${{ matrix.platform }} \
             -v "$PWD:/src" -w /src python:3.13-slim bash -euc '
               apt-get update
-              apt-get install -y --no-install-recommends build-essential curl
+              # zlib1g-dev is required to compile the PyInstaller bootloader from
+              # source (no manylinux wheel on these arches).
+              apt-get install -y --no-install-recommends build-essential zlib1g-dev curl
               pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
               pip install ".[ftpd,tftpd,audiotags]"
               PYTHON=python3 bash packaging/ci/fetch-webdeps.sh
@@ -187,7 +189,9 @@ jobs:
           set -euo pipefail
           docker run --rm --platform ${{ matrix.platform }} \
             -v "$PWD:/src" -w /src python:3.13-alpine sh -euc '
-              apk add --no-cache build-base libffi-dev curl
+              # zlib-dev is required to compile the PyInstaller bootloader from
+              # source (no musllinux wheel on these arches).
+              apk add --no-cache build-base libffi-dev zlib-dev curl
               pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
               pip install ".[ftpd,tftpd,audiotags]"
               PYTHON=python3 sh packaging/ci/fetch-webdeps.sh

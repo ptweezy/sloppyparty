@@ -367,7 +367,7 @@ jobs:
           out="sloppyparty-linux-${{ matrix.arch }}"
           if [ "${{ matrix.libc }}" = musl ]; then
             docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} sh -euc '
-              apk add --no-cache build-base libffi-dev curl
+              apk add --no-cache build-base libffi-dev zlib-dev curl
               pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
               pip install ".[ftpd,tftpd,audiotags]"
               PYTHON=python3 sh packaging/ci/fetch-webdeps.sh
@@ -377,7 +377,7 @@ jobs:
             '
           else
             docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euc '
-              apt-get update && apt-get install -y --no-install-recommends build-essential curl
+              apt-get update && apt-get install -y --no-install-recommends build-essential zlib1g-dev curl
               pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
               pip install ".[ftpd,tftpd,audiotags]"
               PYTHON=python3 bash packaging/ci/fetch-webdeps.sh
