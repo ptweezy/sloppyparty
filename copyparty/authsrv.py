@@ -2617,6 +2617,8 @@ class AuthSrv(object):
             zsl4 = list(set([x.lower() for x in zsl2]))
             emb_all.update(zsl3)
             emb_all.update(zsl4)
+            if "no_readme" in vol.flags:
+                zsl1 = zsl2 = zsl3 = zsl4 = []
             vol.flags["emb_mds"] = [[0, zsl1, zsl3], [1, zsl2, zsl4]]
 
             zsl1 = [x for x in vol.flags["prologues"].split(",") if x]
@@ -2625,6 +2627,8 @@ class AuthSrv(object):
             zsl4 = list(set([x.lower() for x in zsl2]))
             emb_all.update(zsl3)
             emb_all.update(zsl4)
+            if "no_logues" in vol.flags:
+                zsl1 = zsl2 = zsl3 = zsl4 = []
             vol.flags["emb_lgs"] = [[0, zsl1, zsl3], [1, zsl2, zsl4]]
 
             zs = str(vol.flags.get("html_head") or "")
