@@ -47,7 +47,10 @@ src = re.sub(
     flags=re.M,
 )
 
-with open(path, "w", encoding="utf-8") as f:
+# newline="\n" forces LF: Python text mode would otherwise write CRLF on Windows,
+# and setup.py:39 does __version__.py.split("\n\n",1)[1] which then IndexErrors
+# (no "\n\n" in a CRLF file) -> pip install . fails on the Windows binary jobs.
+with open(path, "w", encoding="utf-8", newline="\n") as f:
     f.write(src)
 
 print("set version ->", ver)
