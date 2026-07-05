@@ -35,6 +35,13 @@ def _filter(suite, drop):
 
 def main():
     start = sys.argv[1] if len(sys.argv) > 1 else "tests"
+    # Mirror `python -m unittest discover -s tests`: cwd (the tree copy) must be on
+    # sys.path so `import copyparty` resolves, and discover() adds the tests dir so
+    # the tests' own `import util` works. Running this file directly puts the
+    # driver's own dir on sys.path[0] instead, which hides copyparty -> insert cwd.
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
     suite = unittest.TestLoader().discover(start)
     if os.environ.get("SLOPPY_ALL_TESTS") != "1":
         suite = _filter(suite, KNOWN_BROKEN_UPSTREAM)
