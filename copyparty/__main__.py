@@ -1838,6 +1838,8 @@ def add_transcoding(ap):
     ap2.add_argument("--vt-tonemap", metavar="T", type=u, default="auto", help="tonemap HDR video to SDR when transcoding; \033[32mauto\033[0m = on when ffmpeg has a working tonemap filter (libplacebo/opencl/zimg), \033[32moff\033[0m to passthrough (HDR sources then look washed-out) (volflag=vt_tonemap)")
     ap2.add_argument("--vt-aq", metavar="KBPS", type=int, default=128, help="audio bitrate for video transcoding (volflag=vt_aq)")
     ap2.add_argument("--vt-seg", metavar="SEC", type=float, default=4, help="target HLS segment duration in seconds (volflag=vt_seg)")
+    ap2.add_argument("--vt-readrate", metavar="X", type=float, default=1.5, help="pace each streaming transcode to \033[33mX\033[0m times realtime so a session stays near the viewer's position instead of racing to the end and wasting cpu on video that may never be watched; \033[32m0\033[0m = unlimited (transcode as fast as possible). needs ffmpeg with \033[33m-readrate\033[0m (volflag=vt_readrate)")
+    ap2.add_argument("--vt-idle", metavar="SEC", type=int, default=20, help="stop a streaming transcode this many seconds after its last segment request (viewer paused/closed/seeked away); already-transcoded segments stay cached")
     ap2.add_argument("--vt-maxage", metavar="SEC", type=int, default=86400, help="delete cached video-transcode output after \033[33mSEC\033[0m seconds")
     ap2.add_argument("--vt-jobs", metavar="N", type=int, default=2, help="max number of concurrent video transcodes; raise/lower to match cpu")
 

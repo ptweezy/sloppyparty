@@ -4,19 +4,22 @@ from __future__ import print_function, unicode_literals
 import hashlib
 import math
 import os
+import subprocess as sp
 import threading
 import time
 
 from queue import Full, Queue
 
-from .__init__ import TYPE_CHECKING
+from .__init__ import ANYWIN, MACOS, TYPE_CHECKING, WINDOWS
 from .bos import bos
 from .mtag import HAVE_FFMPEG, bwrap, ffprobe
 from .util import (
+    NICEB,
     Daemon,
     afsenc,
     atomic_move,
     fsenc,
+    killtree,
     min_ex,
     runcmd,
     ub64enc,
@@ -204,6 +207,36 @@ def probe_tonemap(log: Any) -> str:
     return ""
 
 
+def probe_readrate(log: Any) -> int:
+    # how much realtime-pacing this ffmpeg supports (cached on the hub as
+    # args.vt_rr): 0 = none, 1 = -readrate, 2 = -readrate + initial-burst.
+    # a streaming session encodes forward continuously; without pacing it races
+    # to EOF and burns cpu on video the viewer may never reach, so we throttle
+    # it to ~realtime and use the initial burst to fill the player's start buffer
+    if not HAVE_FFMPEG:
+        return 0
+    pre = [HAVE_FFMPEG, b"-nostdin", b"-v", b"error", b"-hide_banner"]
+    src = [b"-f", b"lavfi", b"-i", b"color=c=black:s=64x64:d=0.2"]
+    tail = [b"-frames:v", b"1", b"-f", b"null", b"-"]
+    try:
+        rc, _, _ = runcmd(
+            pre + [b"-readrate", b"2", b"-readrate_initial_burst", b"1"] + src + tail,
+            timeout=15,
+        )
+        if rc == 0:
+            log("hls", "realtime-pacing: readrate + initial-burst", 6)
+            return 2
+        rc, _, _ = runcmd(pre + [b"-readrate", b"2"] + src + tail, timeout=15)
+        if rc == 0:
+            log("hls", "realtime-pacing: readrate (no initial-burst)", 6)
+            return 1
+    except Exception:
+        pass
+    log("hls", "ffmpeg has no -readrate; transcode sessions will not be paced "
+        "and may use more cpu (upgrade ffmpeg to >= 4.x / 6.1 for pacing)", 4)
+    return 0
+
+
 def is_hdr(streams: list) -> bool:
     # true if the first video stream is HDR (PQ/HLG transfer or BT.2020 gamut)
     for s in streams:
@@ -240,11 +273,39 @@ def hls_cfg(args: Any, vn: "VFS") -> str:
     return "".join(ret)
 
 
+# forward-seek this many segments past a session's request frontier before we
+# treat a request as a seek (kill + restart here) rather than normal read-ahead
+_SESS_LOOKAHEAD = 4
+
+
+class _HlsSess(object):
+    # one forward-running ffmpeg transcode ("streaming session"), keyed per
+    # (cachedir, height). it encodes continuously from segment `lo` to EOF via
+    # the hls muxer, so all segment boundaries share one encoder+audio state and
+    # join seamlessly; the http-workers just read the finished v*.ts files
+    def __init__(
+        self, cachedir: str, rdir: str, ptop: str, rem: str, mtime: float,
+        height: int, lo: int, now: float
+    ) -> None:
+        self.cachedir = cachedir
+        self.rdir = rdir
+        self.ptop = ptop
+        self.rem = rem
+        self.mtime = mtime
+        self.height = height
+        self.lo = lo             # first segment index this session produces
+        self.hi = lo             # highest requested index (playhead frontier)
+        self.last_want = now     # last time a segment was requested (idle reap)
+        self.proc: Optional[Any] = None  # ffmpeg Popen once spawned
+        self.dead = False        # set by reap/seek/shutdown; monitor then kills
+
+
 # manages on-the-fly HLS video transcodes; lives in the hub process.
 # the playlist is a full-duration VOD manifest generated up front (so the
-# browser shows a normal seekbar), and each segment is transcoded on demand
-# the first time it is requested (incl. seeks), then cached. the ensure
-# broker-verb only enqueues work and returns fast; http-workers read the
+# browser shows a normal seekbar). the master/rendition playlists are quick
+# one-shot jobs on the worker queue; segments are produced by a continuous
+# per-stream ffmpeg session (see _HlsSess) started on demand. the ensure
+# broker-verb only records intent and returns fast; http-workers read the
 # finished files straight off the shared .hist cache
 class HlsSrv(object):
     def __init__(self, hub: "SvcHub") -> None:
@@ -259,15 +320,31 @@ class HlsSrv(object):
         self.stopping = False
         self.nthr = max(1, self.args.vt_jobs)
 
+        # active streaming sessions, keyed "cachedir\nheight"; at most nthr run
+        # concurrently (one ffmpeg each), the rest get reaped LRU / on idle
+        self.sessions: dict[str, _HlsSess] = {}
+
         self.q: Queue[Optional[tuple[str, str, str, float, int, int]]] = Queue(self.nthr * 4)
         for n in range(self.nthr):
             Daemon(self.worker, "hls-%d" % (n,))
+
+        Daemon(self._reaper, "hls-reap")
 
     def log(self, msg: str, c: int = 0) -> None:
         self.log_func("hls", msg, c)
 
     def shutdown(self) -> None:
         self.stopping = True
+        with self.mutex:
+            procs = [s.proc for s in self.sessions.values() if s.proc]
+            for s in self.sessions.values():
+                s.dead = True
+            self.sessions.clear()
+        for p in procs:
+            try:
+                killtree(p.pid)
+            except Exception:
+                pass
         for _ in range(self.nthr):
             try:
                 self.q.put_nowait(None)
@@ -302,6 +379,13 @@ class HlsSrv(object):
         except Exception:
             pass
 
+        if height and idx >= 0:
+            # a segment: driven by the continuous streaming session, not the
+            # one-shot queue (fast: records intent / (re)starts ffmpeg async)
+            self._want_seg(cachedir, ptop, rem, mtime, idx, height)
+            return cachedir
+
+        # master playlist (height 0) or rendition playlist (idx<0): quick jobs
         key = "%s\n%d\n%d" % (cachedir, height, idx)
         with self.mutex:
             if key not in self.busy:
@@ -326,12 +410,12 @@ class HlsSrv(object):
             cachedir, ptop, rem, mtime, idx, height = job
             key = "%s\n%d\n%d" % (cachedir, height, idx)
             try:
+                # only master/rendition playlists reach the queue; segments are
+                # produced by the streaming sessions (see _want_seg)
                 if not height:
                     self._gen_master(cachedir, ptop, rem, mtime)
-                elif idx < 0:
-                    self._gen_playlist(cachedir, ptop, rem, mtime, height)
                 else:
-                    self._gen_segment(cachedir, ptop, rem, mtime, idx, height)
+                    self._gen_playlist(cachedir, ptop, rem, mtime, height)
             except Exception:
                 self.log("transcode failed for %r h%d #%d:\n%s"
                          % (rem, height, idx, min_ex()), 3)
@@ -453,43 +537,132 @@ class HlsSrv(object):
             f.write(buf)
         atomic_move(self.log, tmp, os.path.join(rdir, "index.m3u8"), vn.flags)
 
-    def _gen_segment(
+    def _want_seg(
         self, cachedir: str, ptop: str, rem: str, mtime: float, idx: int, height: int
     ) -> None:
-        vn = self._vn(ptop)
-        abspath = os.path.join(ptop, rem)
-        seg = float(vn.flags.get("vt_seg", self.args.vt_seg)) or 4.0
-        resw, resh, hdr, _ = self._meta(cachedir, ptop, rem, vn)
+        # record that segment `idx` (height `height`) was requested, and make
+        # sure a streaming session is running that will produce it. cheap: the
+        # slow probe + ffmpeg spawn happens in the session's own thread
+        skey = "%s\n%d" % (cachedir, height)
+        now = time.time()
+        with self.mutex:
+            s = self.sessions.get(skey)
+            if s and not s.dead:
+                # a session already covers this rendition; keep riding it unless
+                # the request is a seek outside its forward window (back before
+                # its start, or far past the read-ahead frontier)
+                if s.lo <= idx <= s.hi + _SESS_LOOKAHEAD:
+                    s.hi = max(s.hi, idx)
+                    s.last_want = now
+                    return
+                self._reap(skey, s)
+            elif s:
+                self._reap(skey, s)
 
-        rdir = os.path.join(cachedir, str(height))
-        start = idx * seg
-        _, oh = self._out_dims(resw, resh, height)
-        enc = self._pick_enc(vn, oh)
-        argv = self._seg_argv(rdir, abspath, vn, start, seg, resw, resh, idx, enc, hdr, height)
+            if len(self.sessions) >= self.nthr:
+                self._reap_lru()
 
-        segpath = os.path.join(rdir, "v%05d.ts" % (idx,))
-        tmp = segpath + ".tmp"
-        rc, _, se = runcmd(argv, timeout=120, nice=True, oom=300)
-        if rc and enc != "x264":
-            # hw encode failed at runtime (device busy/driver/unsupported input);
-            # blacklist it hub-wide so later segments skip it, then rebuild this
-            # segment in software. already-cached hw segments stay valid h264
-            self.log("hw-encoder %s failed rc=%d, falling back to x264:\n%s"
-                     % (enc, rc, (se or "")[-256:]), 3)
+            rdir = os.path.join(cachedir, str(height))
+            s = _HlsSess(cachedir, rdir, ptop, rem, mtime, height, idx, now)
+            self.sessions[skey] = s
+            Daemon(self._run_session, "hls-s%d-%d" % (height, idx), (skey, s))
+
+    def _reap(self, skey: str, s: "_HlsSess") -> None:
+        # caller holds self.mutex; flag the session dead and drop it from the
+        # registry. its monitor thread notices `dead` and kills the ffmpeg
+        s.dead = True
+        if self.sessions.get(skey) is s:
+            del self.sessions[skey]
+
+    def _reap_lru(self) -> None:
+        # caller holds self.mutex; free a slot by reaping the least-recently
+        # wanted session (the stream that has gone quiet the longest)
+        if not self.sessions:
+            return
+        skey = min(self.sessions, key=lambda k: self.sessions[k].last_want)
+        self._reap(skey, self.sessions[skey])
+
+    def _reaper(self) -> None:
+        # stop sessions whose viewer has paused/closed/seeked away (no request
+        # for vt_idle seconds); cached segments stay on disk for instant replay
+        idle = max(5, int(getattr(self.args, "vt_idle", 20)))
+        while not self.stopping:
+            time.sleep(2)
+            now = time.time()
             with self.mutex:
-                self.hw_bad.add(enc)
-            argv = self._seg_argv(
-                rdir, abspath, vn, start, seg, resw, resh, idx, "x264", hdr, height
-            )
-            rc, _, se = runcmd(argv, timeout=120, nice=True, oom=300)
-        if rc:
+                for skey, s in list(self.sessions.items()):
+                    if s.dead or now - s.last_want > idle:
+                        self._reap(skey, s)
+
+    def _run_session(self, skey: str, s: "_HlsSess") -> None:
+        # session thread: probe once, spawn one forward-running ffmpeg (hls
+        # muxer), then babysit it until it exits, is reaped, or the hub stops
+        p = None
+        try:
+            vn = self._vn(s.ptop)
+            resw, resh, hdr, _ = self._meta(s.cachedir, s.ptop, s.rem, vn)
+            chmod = bos.MKD_700 if self.args.free_umask else bos.MKD_755
+            bos.makedirs(s.rdir, vf=chmod)
+            _, oh = self._out_dims(resw, resh, s.height)
+            enc = self._pick_enc(vn, oh)
+            argv = self._session_argv(s, vn, resw, resh, hdr, enc)
+            if s.dead:
+                return
+
+            p = self._spawn(argv)
+            with self.mutex:
+                if s.dead:
+                    killtree(p.pid)
+                    return
+                s.proc = p
+
+            while not self.stopping:
+                if p.poll() is not None:
+                    if p.returncode and enc != "x264":
+                        # hw encoder died at runtime; blacklist hub-wide so the
+                        # restart (and other streams) fall back to software x264
+                        self.log("hw-encoder %s failed rc=%d, disabling it"
+                                 % (enc, p.returncode), 3)
+                        with self.mutex:
+                            self.hw_bad.add(enc)
+                    break
+                if s.dead:
+                    killtree(p.pid)
+                    break
+                _poke_dirs(s.rdir)  # keep the cache alive while encoding
+                time.sleep(0.3)
+        except Exception:
+            self.log("hls session failed for %r h%d:\n%s"
+                     % (s.rem, s.height, min_ex()), 3)
+        finally:
+            if p is not None:
+                try:
+                    if p.poll() is None:
+                        killtree(p.pid)
+                except Exception:
+                    pass
+            with self.mutex:
+                s.dead = True
+                if self.sessions.get(skey) is s:
+                    del self.sessions[skey]
+
+    def _spawn(self, argv: list[bytes]) -> Any:
+        # non-blocking ffmpeg launch (we keep the handle to kill on seek/idle);
+        # mirrors runcmd's niceness/oom handling. HAVE_FFMPEG is already a full
+        # path, so no CMD_EXEB .exe suffixing is needed here
+        ka: dict[str, Any] = {}
+        if WINDOWS:
+            ka["creationflags"] = 0x4000  # BELOW_NORMAL_PRIORITY_CLASS
+        elif NICEB:
+            argv = [NICEB] + argv
+        p = sp.Popen(argv, stdout=sp.DEVNULL, stderr=sp.DEVNULL, **ka)
+        if not ANYWIN and not MACOS:
             try:
-                os.unlink(tmp)
+                with open("/proc/%d/oom_score_adj" % (p.pid,), "wb") as f:
+                    f.write(b"300\n")
             except Exception:
                 pass
-            raise Exception("ffmpeg rc=%d: %s" % (rc, (se or "")[-512:]))
-
-        atomic_move(self.log, tmp, segpath, vn.flags)
+        return p
 
     def _pick_enc(self, vn: "VFS", oh: int = 0) -> str:
         # honor the vt_enc flag/arg against the hub's validated hw set + the
@@ -522,28 +695,24 @@ class HlsSrv(object):
         ow -= ow % 2
         return ow, oh
 
-    def _seg_argv(
-        self,
-        outdir: str,
-        abspath: str,
-        vn: "VFS",
-        start: float,
-        seg: float,
-        resw: int,
-        resh: int,
-        idx: int,
-        enc: str,
-        hdr: int,
-        height: int,
+    def _session_argv(
+        self, s: "_HlsSess", vn: "VFS", resw: int, resh: int, hdr: int, enc: str
     ) -> list[bytes]:
+        # build the forward-running ffmpeg for a streaming session: one hls-muxer
+        # encode from segment s.lo to EOF. -force_key_frames + -hls_time keep the
+        # cuts on IDR frames exactly seg apart, and because it is a single encode
+        # every segment boundary shares one encoder+audio state (seamless). the
+        # temp_file flag makes each v%05d.ts appear atomically once finished, so
+        # http-workers never read a half-written segment
         fl = vn.flags
+        seg = float(fl.get("vt_seg", self.args.vt_seg)) or 4.0
         crf = int(fl.get("vt_vq", self.args.vt_vq))
         preset = str(fl.get("vt_preset", self.args.vt_preset))
         aq = int(fl.get("vt_aq", self.args.vt_aq))
         if preset not in X264_PRESETS:
             preset = "veryfast"
 
-        ow, oh = self._out_dims(resw, resh, height)
+        ow, oh = self._out_dims(resw, resh, s.height)
 
         method = getattr(self.args, "vt_tm", "") or ""
         if str(fl.get("vt_tonemap", self.args.vt_tonemap) or "auto") in ("off", "n", "no"):
@@ -555,41 +724,62 @@ class HlsSrv(object):
             dev = tm_devargs(method)
             vf = tm_vf(method, ow, oh)
         else:
-            # SDR (or tonemap unavailable/disabled): scale + 8-bit, as before
+            # SDR (or tonemap unavailable/disabled): scale + 8-bit
             parts = []
             if ow and oh and (ow, oh) != (resw, resh):
                 parts.append("scale=%d:%d" % (ow, oh))
             parts.append("format=yuv420p")
             vf = ",".join(parts)
 
-        bap_in = fsenc(abspath)
-        bap_out = fsenc(os.path.join(outdir, "v%05d.ts.tmp" % (idx,)))
+        # realtime pacing so the session tracks the viewer instead of racing to
+        # EOF; the initial burst fills the player's start buffer at full speed
+        rate: list[bytes] = []
+        rr = float(fl.get("vt_readrate", self.args.vt_readrate) or 0)
+        rrlvl = int(getattr(self.args, "vt_rr", 0))
+        if rr > 0 and rrlvl:
+            rate = [b"-readrate", ("%g" % rr).encode("ascii")]
+            if rrlvl >= 2:
+                burst = max(seg * 4, 20.0)
+                rate += [b"-readrate_initial_burst", ("%g" % burst).encode("ascii")]
 
-        # -ss before -i is a fast keyframe seek that, when re-encoding, is also
-        # frame-accurate; each segment is a fresh encode so it starts on an IDR
-        # keyframe, and -output_ts_offset places it at its slot on the timeline
+        start = s.lo * seg
+        bap_in = fsenc(os.path.join(s.ptop, s.rem))
+        segpat = fsenc(os.path.join(s.rdir, "v%05d.ts"))
+        livepl = fsenc(os.path.join(s.rdir, ".live.m3u8"))
+        kf = ("expr:gte(t,n_forced*%g)" % seg).encode("ascii")
+
         # fmt: off
-        argv = bwrap(HAVE_FFMPEG, bap_in, bap_out) + [
+        argv = bwrap(HAVE_FFMPEG, bap_in, segpat) + [
             b"-nostdin",
             b"-v", b"error",
             b"-hide_banner",
-        ] + dev + [
-            b"-ss", ("%.3f" % start).encode("ascii"),
-            b"-i", bap_in,
-            b"-t", ("%.3f" % seg).encode("ascii"),
+            b"-nostats",
+        ] + dev + rate
+        if s.lo:
+            # seek start (a fresh session after a seek): fast input seek, then
+            # place the output back at its true slot on the timeline
+            argv += [b"-ss", ("%.3f" % start).encode("ascii")]
+        argv += [b"-i", bap_in]
+        if s.lo:
+            argv += [b"-output_ts_offset", ("%.3f" % start).encode("ascii")]
+        argv += [
             b"-map", b"0:v:0",
             b"-map", b"0:a:0?",
             b"-vf", vf.encode("ascii"),
         ] + enc_argv(enc, crf, preset, "high") + [
+            b"-force_key_frames", kf,
             b"-pix_fmt", b"yuv420p",
             b"-c:a", b"aac",
             b"-b:a", ("%dk" % aq).encode("ascii"),
             b"-ac", b"2",
-            b"-muxdelay", b"0",
-            b"-muxpreload", b"0",
-            b"-output_ts_offset", ("%.3f" % start).encode("ascii"),
-            b"-f", b"mpegts",
-            bap_out,
+            b"-f", b"hls",
+            b"-hls_time", ("%g" % seg).encode("ascii"),
+            b"-hls_flags", b"independent_segments+temp_file",
+            b"-hls_list_size", b"0",
+            b"-hls_segment_type", b"mpegts",
+            b"-start_number", ("%d" % s.lo).encode("ascii"),
+            b"-hls_segment_filename", segpat,
+            livepl,
         ]
         # fmt: on
         return argv
