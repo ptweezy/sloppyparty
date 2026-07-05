@@ -1,0 +1,91 @@
+name: ci
+
+# copyparty's unittest suite, run the way copyparty intends (a clean tree copy
+# with type-hints stripped -- see packaging/ci/run-tests.sh). Gated on Linux across
+# the supported Python range; macOS and Windows run as informational rows because
+# parts of copyparty's suite are POSIX-specific (symlinks, ramdisk, privilege drop)
+# and the Windows *runtime* is instead proven by build.yml's per-commit .exe build
+# + --version smoke test.
+#
+# Three TestVFS cases are deselected by run-tests.sh: they fail on PRISTINE upstream
+# copyparty too (verified against upstream/hovudstraum), so they are a copyparty
+# test/code drift, not a sloppyparty regression. Set SLOPPY_ALL_TESTS=1 to include
+# them.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# One in-flight run per ref; a newer commit supersedes the older run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Harden package installs against transient PyPI blips.
+env:
+  PIP_RETRIES: "5"
+  PIP_TIMEOUT: "60"
+
+jobs:
+  tests:
+    name: py${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash   # git-bash on the Windows runner, so run-tests.sh works everywhere
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+        experimental: [false]
+        include:
+          # macOS + Windows: informational (copyparty's suite is POSIX-leaning).
+          - os: macos-latest
+            python: '3.14'
+            experimental: true
+          - os: windows-latest
+            python: '3.14'
+            experimental: true
+          # 3.15 is in beta -- early signal only, never gates.
+          - os: ubuntu-latest
+            python: '3.15'
+            experimental: true
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # jinja2: copyparty runtime dep; strip-hints: test prep; requests: smoketest;
+          # coverage: uploaded to Codecov from the Linux rows.
+          pip install jinja2 strip-hints requests coverage
+
+      - name: Run tests
+        env:
+          PYTHON: python
+          # Coverage only on the gating Linux rows (keeps macOS/Windows cheap).
+          COVERAGE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+        run: bash packaging/ci/run-tests.sh
+
+      # Publish coverage to Codecov (informational: the workflow's own pass/fail is
+      # the gate). Each Linux cell uploads under its own flag; Codecov merges them.
+      - name: Upload coverage to Codecov
+        if: ${{ matrix.os == 'ubuntu-latest' && !cancelled() }}
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: ${{ matrix.os }}-py${{ matrix.python }}
+          fail_ci_if_error: false
