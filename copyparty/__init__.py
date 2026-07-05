@@ -76,6 +76,7 @@ web/copyparty.gif
 web/deps/busy.mp3
 web/deps/easymde.css
 web/deps/easymde.js
+web/deps/hls.light.js
 web/deps/marked.js
 web/deps/mfusepy.py
 web/deps/mini-fa.css

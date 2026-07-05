@@ -58,6 +58,10 @@ https://github.com/cure53/DOMPurify/
 C: 2025 Cure53 / Mario Heiderich
 L: Apache-2.0 or MPL-2.0
 
+https://github.com/video-dev/hls.js/
+C: 2017 Dailymotion (http://www.dailymotion.com)
+L: Apache-2.0
+
 https://github.com/markedjs/marked/
 C: 2018+, MarkedJS
 C: 2011-2018, Christopher Jeffrey (https://github.com/chjj/)

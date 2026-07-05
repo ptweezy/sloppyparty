@@ -1828,6 +1828,14 @@ def add_transcoding(ap):
     ap2.add_argument("--no-acode", action="store_true", help="disable audio transcoding")
     ap2.add_argument("--no-bacode", action="store_true", help="disable batch audio transcoding by folder download (zip/tar)")
     ap2.add_argument("--ac-maxage", metavar="SEC", type=int, default=86400, help="delete cached transcode output after \033[33mSEC\033[0m seconds")
+    ap2.add_argument("--no-vcode", action="store_true", help="disable on-the-fly video transcoding (HLS); videos which the browser cannot play natively will not be transcoded")
+    ap2.add_argument("--vc-maxh", metavar="PX", type=int, default=720, help="downscale transcoded video to at most this height (\033[32m0\033[0m = keep source resolution); (volflag=vc_maxh)")
+    ap2.add_argument("--vc-vq", metavar="CRF", type=int, default=23, help="h264 quality for video transcoding; lower is better (\033[32m18\033[0m=high, \033[32m28\033[0m=small); (volflag=vc_vq)")
+    ap2.add_argument("--vc-preset", metavar="P", type=u, default="veryfast", help="x264 speed/efficiency preset (\033[32multrafast\033[0m ... \033[32mveryslow\033[0m); faster = more CPU-friendly but larger; (volflag=vc_preset)")
+    ap2.add_argument("--vc-aq", metavar="KBPS", type=int, default=128, help="audio bitrate for video transcoding; (volflag=vc_aq)")
+    ap2.add_argument("--vc-seg", metavar="SEC", type=float, default=4, help="target HLS segment duration in seconds; (volflag=vc_seg)")
+    ap2.add_argument("--vc-maxage", metavar="SEC", type=int, default=86400, help="delete cached video-transcode output after \033[33mSEC\033[0m seconds")
+    ap2.add_argument("--vc-jobs", metavar="N", type=int, default=2, help="max number of concurrent video transcodes; raise/lower to match cpu")
 
 
 def add_tail(ap):

@@ -2464,12 +2464,12 @@ class AuthSrv(object):
                 if vf not in vol.flags:
                     vol.flags[vf] = getattr(self.args, ga)
 
-            zs = "forget_ip gid md_nhist nrand tail_who th_qv th_qvx th_spec_p u2abort u2ow uid unp_who ups_who zip_who"
+            zs = "forget_ip gid md_nhist nrand tail_who th_qv th_qvx th_spec_p u2abort u2ow uid unp_who ups_who vc_maxh vc_vq vc_aq zip_who"
             for k in zs.split():
                 if k in vol.flags:
                     vol.flags[k] = int(vol.flags[k])
 
-            zs = "aconvt convt tail_fd tail_rate tail_tmax"
+            zs = "aconvt convt tail_fd tail_rate tail_tmax vc_seg"
             for k in zs.split():
                 if k in vol.flags:
                     vol.flags[k] = float(vol.flags[k])
@@ -3240,6 +3240,12 @@ class AuthSrv(object):
                 "have_acode": not self.args.no_acode,
                 "have_c2flac": self.args.allow_flac,
                 "have_c2wav": self.args.allow_wav,
+                "have_vcode": (
+                    (not self.args.no_vcode)
+                    and getattr(self.args, "have_x264", False)
+                    and getattr(self.args, "have_aac", False)
+                    and "dvcode" not in vf
+                ),
                 "have_shr": self.args.shr,
                 "shr_who": vf["shr_who"],
                 "have_zip": not self.args.no_zip,

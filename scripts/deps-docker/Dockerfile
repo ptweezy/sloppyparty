@@ -7,6 +7,7 @@ ENV     ver_hashwasm=4.12.0 \
         ver_codemirror=5.65.18 \
         ver_fontawesome=5.13.0 \
         ver_prism=1.30.0 \
+        ver_hlsjs=1.5.20 \
         ver_zopfli=1.0.3
 
 # versioncheck:
@@ -15,6 +16,7 @@ ENV     ver_hashwasm=4.12.0 \
 # https://github.com/codemirror/codemirror5/releases
 # https://github.com/cure53/DOMPurify/releases
 # https://github.com/Daninet/hash-wasm/releases
+# https://github.com/video-dev/hls.js/releases
 # https://github.com/google/zopfli/tags
 
 
@@ -37,6 +39,7 @@ RUN     mkdir -p /z/dist/no-pk \
         && wget https://github.com/google/zopfli/archive/zopfli-$ver_zopfli.tar.gz -O zopfli.tgz \
         && wget https://github.com/Daninet/hash-wasm/releases/download/v$ver_hashwasm/hash-wasm@$ver_hashwasm.zip -O hash-wasm.zip \
         && wget https://github.com/PrismJS/prism/archive/refs/tags/v$ver_prism.tar.gz -O prism.tgz \
+        && wget https://registry.npmjs.org/hls.js/-/hls.js-$ver_hlsjs.tgz -O hlsjs.tgz \
         && wget https://files.pythonhosted.org/packages/91/47/746287c8962274f73ee25edb3840d80899464bfffbe2c435424c2d60a071/mfusepy-3.1.1.tar.gz -O mfusepy.tgz \
         && (mkdir hash-wasm \
             && cd hash-wasm \
@@ -54,6 +57,7 @@ RUN     mkdir -p /z/dist/no-pk \
             && npm i gulp-cli -g ) \
         && tar --no-same-owner -xf dompurify.tgz \
         && tar --no-same-owner -xf prism.tgz \
+        && (mkdir hlsjs && tar --no-same-owner -C hlsjs --strip-components=1 -xf hlsjs.tgz) \
         && tar --no-same-owner -xf mfusepy.tgz \
         && unzip fontawesome.zip \
         && tar --no-same-owner -xf zopfli.tgz
@@ -142,6 +146,10 @@ RUN     /bin/ash /z/mini-fa.sh
 COPY    genprism.py /z
 COPY    genprism.sh /z
 RUN     ./genprism.sh $ver_prism
+
+
+# build hls.js
+RUN     cp -pv hlsjs/dist/hls.light.min.js /z/dist/hls.light.js
 
 
 # compress

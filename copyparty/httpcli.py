@@ -34,6 +34,7 @@ from .__init__ import ANYWIN, RES, RESM, TYPE_CHECKING, EnvParams, unicode
 from .__version__ import S_VERSION
 from .authsrv import LEELOO_DALLAS, VFS  # typechk
 from .bos import bos
+from .hls import hls_path
 from .qrkode import QrCode, qr2svg, qrgen
 from .star import StreamTar
 from .sutil import StreamArc, gfilter
@@ -170,6 +171,11 @@ H_CONN_CLOSE = "Connection: Close"
 RSS_SORT = {"m": "mt", "u": "at", "n": "fn", "s": "sz"}
 ACODE2_FMT = set(["opus", "owa", "caf", "mp3", "flac", "wav"])
 IDX_HTML = set(["index.htm", "index.html"])
+
+# on-the-fly HLS video transcoding; matches and validates the request:
+#   <source-file>/.hls/index.m3u8   -> the playlist
+#   <source-file>/.hls/vNNNNN.ts    -> a segment  (strict name = traversal-safe)
+RE_HLS = re.compile(r"^(.+)/\.hls/(index\.m3u8|v[0-9]{5}\.ts)$")
 
 A_FILE = os.stat_result(
     (0o644, -1, -1, 1, 1000, 1000, 8, 0x39230101, 0x39230101, 0x39230101)
@@ -6763,6 +6769,117 @@ class HttpCli(object):
         self.reply(ret.encode("utf-8", "replace"), mime=mime)
         return True
 
+    def tx_hls(self, src: str, res: str) -> bool:
+        vn = self.vn
+        if "dvcode" in vn.flags:
+            raise Pebkac(404)
+
+        ext = src.rsplit(".", 1)[-1].lower() if "." in src else ""
+        if ext not in set(self.args.th_r_ffv.split(",")):
+            raise Pebkac(404)
+
+        abspath = vn.dcanonical(src)
+        try:
+            st = bos.stat(abspath)
+        except:
+            raise Pebkac(404)
+
+        if stat.S_ISDIR(st.st_mode):
+            raise Pebkac(404)
+
+        # per-file permission gate (identical to thumbnails; honors fk/dirkey);
+        # re-checked on the playlist and every segment
+        if "k" in self.uparam or "dky" in vn.flags:
+            use_filekey = self._use_filekey(vn, abspath, st)
+        else:
+            use_filekey = False
+
+        if not (
+            self.can_read or (self.can_get and (use_filekey or "fk" not in vn.flags))
+        ):
+            raise Pebkac(403)
+
+        dbv, vrem = vn.get_dbv(src)
+        ptop = dbv.realpath
+        histpath = self.asrv.vfs.histtab.get(ptop)
+        if not histpath:
+            raise Pebkac(404, "no cache volume for video transcode")
+
+        mtime = int(st.st_mtime)
+        cachedir = hls_path(histpath, vrem, mtime)
+
+        if res == "index.m3u8":
+            return self._tx_hls_playlist(ptop, vrem, mtime, cachedir)
+
+        # res is "vNNNNN.ts" (validated by RE_HLS)
+        return self._tx_hls_segment(ptop, vrem, mtime, int(res[1:6]), cachedir, res)
+
+    def _tx_hls_playlist(
+        self, ptop: str, vrem: str, mtime: int, cachedir: str
+    ) -> bool:
+        if not self.conn.hsrv.broker.ask("hlssrv.ensure", ptop, vrem, mtime, -1).get():
+            raise Pebkac(500, "video transcode unavailable")
+
+        # the playlist is a complete VOD manifest; wait for it to appear
+        plpath = os.path.join(cachedir, "index.m3u8")
+        deadline = time.time() + 30
+        buf = b""
+        while True:
+            try:
+                if bos.path.getsize(plpath):
+                    with open(plpath, "rb") as f:
+                        buf = f.read()
+            except:
+                buf = b""
+
+            if b"#EXT-X-ENDLIST" in buf:
+                break
+
+            if time.time() > deadline:
+                raise Pebkac(504, "video transcode did not produce a playlist in time")
+
+            time.sleep(0.2)
+
+        self.conn.hsrv.broker.say("hlssrv.poke", cachedir)
+
+        # relative segment URIs would drop the query, so re-attach the filekey
+        kq = self.uparam.get("k")
+        if kq:
+            q = ("?k=" + kq).encode("utf-8")
+            out = []
+            for ln in buf.split(b"\n"):
+                if ln and not ln.startswith(b"#"):
+                    ln += q
+                out.append(ln)
+            buf = b"\n".join(out)
+
+        hdr = {"Cache-Control": "no-store, max-age=0"}
+        self.reply(buf, mime="application/vnd.apple.mpegurl", headers=hdr)
+        return True
+
+    def _tx_hls_segment(
+        self, ptop: str, vrem: str, mtime: int, idx: int, cachedir: str, res: str
+    ) -> bool:
+        # transcoded on demand the first time it is requested (incl. on seek)
+        self.conn.hsrv.broker.ask("hlssrv.ensure", ptop, vrem, mtime, idx).get()
+
+        segpath = os.path.join(cachedir, res)
+        deadline = time.time() + 45
+        while True:
+            try:
+                if bos.path.getsize(segpath):
+                    break
+            except:
+                pass
+
+            if time.time() > deadline:
+                raise Pebkac(504, "video transcode did not produce the segment in time")
+
+            time.sleep(0.2)
+
+        self.conn.hsrv.broker.say("hlssrv.poke", cachedir)
+        return self.tx_file("oh_f", segpath)
+
     def tx_browser(self) -> bool:
         vpath = ""
         vpnodes = [["", "/"]]
@@ -6777,6 +6894,12 @@ class HttpCli(object):
 
         vn = self.vn
         rem = self.rem
+
+        if self.args.have_x264 and self.args.have_aac and not self.args.no_vcode:
+            zm = RE_HLS.match(rem)
+            if zm:
+                return self.tx_hls(zm.group(1), zm.group(2))
+
         abspath = vn.dcanonical(rem)
         dbv, vrem = vn.get_dbv(rem)
 
