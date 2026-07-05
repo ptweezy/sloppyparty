@@ -1507,6 +1507,8 @@ def add_sftp(ap):
     ap2.add_argument("--sftp-hostk", metavar="FP", type=u, default=E.cfg, help="path to folder with hostkeys, for example 'ssh_host_rsa_key'; missing keys will be generated")
     ap2.add_argument("--sftp-banner", metavar="T", type=u, default="", help="bannertext to send when someone connects; can be @filepath")
     ap2.add_argument("--sftp-ipa", metavar="CIDR", type=u, default="", help="only accept connections from IP-addresses inside \033[33mCIDR\033[0m (comma-separated); specify [\033[32many\033[0m] to disable inheriting \033[33m--ipa\033[0m / \033[33m--ipar\033[0m. Examples: [\033[32mlan\033[0m] or [\033[32m10.89.0.0/16, 192.168.33.0/24\033[0m]")
+    ap2.add_argument("--sftp-hs-t", metavar="SEC", type=int, default=15, help="connection handshake timeout in seconds")
+    ap2.add_argument("--sftp-hs-n", metavar="NUM", type=int, default=4, help="max num ongoing/incomplete handshakes")
 
 
 def add_ftp(ap):
