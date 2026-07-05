@@ -5,3 +5,26 @@
 *.png binary
 *.gif binary
 *.gz binary
+
+# ---- sloppyparty fork: per-path merge policy ----------------------------
+# merge=ours -> custom driver (see .gitconfig-fork + scripts/fork-setup.sh).
+# On a `git merge`, keeps OUR version and discards upstream's edits to the
+# file -- but ONLY fires when both sides changed it. Use `git merge`, never
+# `git rebase`, to pull upstream (rebase inverts ours/theirs and would keep
+# upstream's version instead). These lines come AFTER `*.gif binary` above so
+# the per-path merge attribute wins for the two branded gifs.
+
+# files we fully own (fork identity / community docs)
+/README.md            merge=ours
+/CONTRIBUTING.md      merge=ours
+/CODE_OF_CONDUCT.md   merge=ours
+/SECURITY.md          merge=ours
+/.github/**           merge=ours
+
+# branded image assets we replace with sloppyparty artwork
+/copyparty/web/copyparty.gif   merge=ours
+/copyparty/web/iiam.gif        merge=ours
+
+# the driver-definition include must never be text-merged away
+/.gitconfig-fork      merge=ours
+# -------------------------------------------------------------------------

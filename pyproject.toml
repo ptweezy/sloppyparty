@@ -1,11 +1,12 @@
 [project]
-name = "copyparty"
+name = "sloppyparty"
 description = """
   Portable file server with accelerated resumable uploads, \
   deduplication, WebDAV, SFTP, FTP, zeroconf, media indexer, \
   video thumbnails, audio transcoding, and write-only folders"""
 readme = "README.md"
 authors = [{ name = "ed", email = "copyparty@ocv.me" }]
+maintainers = [{ name = "ptweezy", email = "parkerbrayden@gmail.com" }]
 license = { text = "MIT" }
 requires-python = ">=3.3"
 dependencies = ["Jinja2"]
@@ -41,8 +42,8 @@ classifiers = [
 ]
 
 [project.urls]
-"Source Code" = "https://github.com/9001/copyparty"
-"Bug Tracker" = "https://github.com/9001/copyparty/issues"
+"Source Code" = "https://github.com/ptweezy/sloppyparty"
+"Bug Tracker" = "https://github.com/ptweezy/sloppyparty/issues"
 "Demo Server" = "https://a.ocv.me/pub/demo/"
 
 [project.optional-dependencies]
@@ -67,6 +68,7 @@ zeromq = ["pyzmq"]
 
 [project.scripts]
 copyparty = "copyparty.__main__:main"
+sloppyparty = "copyparty.__main__:main"
 "u2c" = "copyparty.web.a.u2c:main"
 "partyfuse" = "copyparty.web.a.partyfuse:main"
 

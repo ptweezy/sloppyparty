@@ -1,0 +1,3 @@
+[merge "ours"]
+	name = sloppyparty: keep our fork's version of this file
+	driver = true
