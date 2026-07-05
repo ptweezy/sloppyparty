@@ -25,8 +25,11 @@ PY="${PYTHON:-python3}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# Clean copy, mirroring scripts/run-tests.sh (which runs from unt/).
-cp -pR copyparty tests "$work/"
+# Clean copy, mirroring scripts/run-tests.sh (which runs from unt/). -L dereferences
+# the copyparty/web/a/*.py symlinks (-> ../../../bin/*) so the copied tree is
+# self-contained; without it those become dangling links and strip_hints dies with
+# "FileNotFoundError: ./copyparty/web/a/u2c.py" on Linux/macOS runners.
+cp -pRL copyparty tests "$work/"
 mkdir -p "$work/srv"
 cd "$work"
 

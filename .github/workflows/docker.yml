@@ -103,7 +103,10 @@ jobs:
           - { variant: min, suffix: "-min", add_pkg: "" }
           - { variant: im,  suffix: "-im",  add_pkg: "" }
           - { variant: iv,  suffix: "-iv",  add_pkg: "ffmpeg" }
-          - { variant: dj,  suffix: "-dj",  add_pkg: "ffmpeg" }
+          # NOTE: the `dj` variant is intentionally omitted -- its audio key/BPM stack
+          # (vamp + keyfinder) compiles from source needing numpy-at-build and pulls a
+          # download that 403s in generic CI; it only builds cleanly against
+          # copyparty's scripts/docker/base image. Add it back once that base is wired.
     steps:
       - name: Resolve build target
         id: target

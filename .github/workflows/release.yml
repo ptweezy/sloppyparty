@@ -114,8 +114,10 @@ jobs:
               echo "::error::Invalid tag '$new'; expected X.Y.Z." >&2; exit 1; }
           else
             # Latest fork release tag (sloppyparty-vX.Y.Z), NOT upstream's vX.Y.Z.
+            # `|| true`: on the very first release there are no sloppyparty-v* tags,
+            # so grep exits nonzero and pipefail would otherwise kill the job.
             latest="$(git tag -l 'sloppyparty-v*' | sed 's/^sloppyparty-v//' \
-                      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+                      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
             if [ -z "$latest" ]; then
               new="1.0.0"   # seed the fork's own version line at 1.0.0
             else
