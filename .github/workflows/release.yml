@@ -1,0 +1,510 @@
+name: release
+
+# Fully automated release pipeline for the sloppyparty fork.
+#
+# TRIGGER MODEL (per your request): EVERY push to the release branch cuts a new
+# release, auto-bumping the PATCH version. No commit marker is needed. To skip a
+# release for a particular commit (docs, typo, WIP), put "[skip release]" anywhere
+# in the commit message. A manual workflow_dispatch can instead bump minor/major or
+# release an exact version.
+#
+# On release it: computes the next version from the latest `sloppyparty-v*` tag,
+# patches copyparty/__version__.py to it (transiently, NEVER committed -- so there
+# is no release loop and a re-run retries cleanly), gates on the test suite, builds
+# the wheel + sdist + SFX + self-contained binaries at that version, then AFTER the
+# builds succeed: (optionally publishes to PyPI -- disabled by default), tags
+# `sloppyparty-v<X.Y.Z>`, cuts a GitHub Release with all assets + SHA256SUMS, builds
+# + pushes the GHCR images, and updates the Homebrew tap. A broken build fails the
+# run before any tag/release exists.
+#
+# Tags are `sloppyparty-v<X.Y.Z>` (NOT `v<X.Y.Z>`) so they never collide with the
+# 380+ upstream copyparty `v<X.Y.Z>` tags this fork inherits on every merge.
+
+on:
+  push:
+    branches: [main]   # <-- release branch. NOTE: hovudstraum must stay a pristine
+                       #     upstream mirror; if you develop on `develop`, change this.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump level (ignored when 'tag' is set)"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      tag:
+        description: "Exact version to release as X.Y.Z (overrides bump); blank = compute next"
+        type: string
+        default: ""
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PIP_RETRIES: "5"
+  PIP_TIMEOUT: "60"
+  PYINSTALLER_VER: "6.21.0"
+
+jobs:
+  # Decide whether to release and at what bump level. On push this is ALWAYS a
+  # release (patch) unless the commit says "[skip release]".
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.d.outputs.release }}
+      bump: ${{ steps.d.outputs.bump }}
+      full_matrix: ${{ steps.d.outputs.full_matrix }}
+    steps:
+      - id: d
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_BUMP: ${{ github.event.inputs.bump }}
+          MSG: ${{ github.event.head_commit.message }}
+          # Build the full exotic-arch binary matrix? Off by default so every-commit
+          # releases stay fast/cheap; set repo variable FULL_BINARY_MATRIX=true (or
+          # use workflow_dispatch) to build all Linux arches + musl on every release.
+          FULL: ${{ vars.FULL_BINARY_MATRIX }}
+        run: |
+          set -euo pipefail
+          release="true"
+          bump="patch"
+          full_matrix="false"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            bump="${INPUT_BUMP:-patch}"
+            full_matrix="true"               # manual runs build the full matrix
+          else
+            # every push releases (patch) unless explicitly skipped
+            case "$MSG" in
+              *"[skip release]"*|*"[no release]"*|*"[skip ci]"*)
+                release="false" ;;
+            esac
+            [ "${FULL:-}" = "true" ] && full_matrix="true"
+          fi
+          {
+            echo "release=$release"
+            echo "bump=$bump"
+            echo "full_matrix=$full_matrix"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::release=$release bump=$bump full_matrix=$full_matrix (event=$EVENT)"
+
+  # Compute the next version once so every builder pins the same number.
+  version:
+    needs: decide
+    if: needs.decide.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      new: ${{ steps.ver.outputs.new }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - id: ver
+        env:
+          BUMP: ${{ needs.decide.outputs.bump }}
+          OVERRIDE: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          if [ -n "${OVERRIDE:-}" ]; then
+            new="$OVERRIDE"
+            printf '%s' "$new" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+              echo "::error::Invalid tag '$new'; expected X.Y.Z." >&2; exit 1; }
+          else
+            # Latest fork release tag (sloppyparty-vX.Y.Z), NOT upstream's vX.Y.Z.
+            latest="$(git tag -l 'sloppyparty-v*' | sed 's/^sloppyparty-v//' \
+                      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+            if [ -z "$latest" ]; then
+              new="1.0.0"   # seed the fork's own version line at 1.0.0
+            else
+              IFS='.' read -r a b c <<<"$latest"
+              case "$BUMP" in
+                major) a=$((a+1)); b=0; c=0 ;;
+                minor) b=$((b+1)); c=0 ;;
+                patch) c=$((c+1)) ;;
+              esac
+              new="${a}.${b}.${c}"
+            fi
+          fi
+          if git rev-parse -q --verify "refs/tags/sloppyparty-v$new" >/dev/null; then
+            echo "::error::Tag sloppyparty-v$new already exists; refusing." >&2; exit 1
+          fi
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing $new (bump=$BUMP)"
+
+  # Gate the release on the test suite (Linux, latest stable Python).
+  gate:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install jinja2 strip-hints coverage
+          bash packaging/ci/run-tests.sh
+
+  # Wheel + sdist at the pinned version.
+  dist:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build wheel + sdist
+        run: |
+          set -euo pipefail
+          bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*.whl dist/*.tar.gz
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  # SFX at the pinned version. Removing .git after set-version forces make-sfx to
+  # read the version from the patched __version__.py instead of `git describe`
+  # (which would otherwise resolve to an inherited upstream v-tag).
+  sfx:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build SFX
+        run: |
+          set -euo pipefail
+          bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
+          rm -rf .git
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends bzip2
+          pip install jinja2
+          bash scripts/make-sfx.sh fast dl-wd
+          mv dist/copyparty-sfx.py dist/sloppyparty-sfx.py
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-sfx
+          path: dist/sloppyparty-sfx.py
+          if-no-files-found: error
+
+  # Core native binaries -- always built (fast). Linux amd64/arm64.
+  binaries-linux:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
+          pip install "pyinstaller==${PYINSTALLER_VER}"
+          pip install ".[ftpd,tftpd,audiotags]"
+          bash packaging/ci/fetch-webdeps.sh
+          pyinstaller packaging/pyinstaller/sloppyparty.spec
+          ./dist/sloppyparty --version
+          mv dist/sloppyparty "dist/sloppyparty-linux-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-linux-${{ matrix.arch }}
+          path: dist/sloppyparty-linux-${{ matrix.arch }}
+          if-no-files-found: error
+
+  # macOS binaries (arm64/amd64), Developer ID signed + notarized when the macOS
+  # signing secrets are configured (skipped with a warning otherwise).
+  binaries-macos:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-15 }
+          - { arch: amd64, runner: macos-15-intel }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
+          pip install "pyinstaller==${PYINSTALLER_VER}"
+          pip install ".[ftpd,tftpd,audiotags]"
+          bash packaging/ci/fetch-webdeps.sh
+          pyinstaller packaging/pyinstaller/sloppyparty.spec
+          ./dist/sloppyparty --version
+          case "${{ matrix.arch }}" in amd64) want=x86_64 ;; arm64) want=arm64 ;; esac
+          file dist/sloppyparty | grep -q "$want"
+      - name: Sign and notarize
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_KEY_BASE64: ${{ secrets.MACOS_NOTARY_KEY_BASE64 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_CERT_P12_BASE64:-}" ]; then
+            echo "::warning::macOS signing secrets not set; shipping an unsigned binary."; exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"; KEYCHAIN_PW="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" -t cert -f pkcs12 -k "$KEYCHAIN" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          codesign --force --options runtime --timestamp --keychain "$KEYCHAIN" --sign "$MACOS_SIGN_IDENTITY" dist/sloppyparty
+          codesign --verify --strict --verbose=2 dist/sloppyparty
+          echo "$MACOS_NOTARY_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          ditto -c -k dist/sloppyparty "$RUNNER_TEMP/sloppyparty.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/sloppyparty.zip" --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
+      - name: Rename binary
+        run: mv dist/sloppyparty "dist/sloppyparty-macos-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-macos-${{ matrix.arch }}
+          path: dist/sloppyparty-macos-${{ matrix.arch }}
+          if-no-files-found: error
+
+  # Windows binaries (amd64/arm64).
+  binaries-windows:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: windows-latest }
+          - { arch: arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
+          pip install "pyinstaller==${PYINSTALLER_VER}"
+          pip install ".[ftpd,tftpd,audiotags]"
+          bash packaging/ci/fetch-webdeps.sh
+          pyinstaller packaging/pyinstaller/sloppyparty.spec
+          ./dist/sloppyparty.exe --version
+          mv dist/sloppyparty.exe "dist/sloppyparty-windows-${{ matrix.arch }}.exe"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-windows-${{ matrix.arch }}
+          path: dist/sloppyparty-windows-${{ matrix.arch }}.exe
+          if-no-files-found: error
+
+  # Exotic Linux arches (glibc i686/armv7/ppc64le/s390x/riscv64 + the full musl set)
+  # -- built via QEMU. Gated OFF by default so every-commit releases stay fast; runs
+  # on workflow_dispatch or when repo variable FULL_BINARY_MATRIX=true.
+  binaries-extra:
+    needs: [decide, version]
+    if: needs.decide.outputs.release == 'true' && needs.decide.outputs.full_matrix == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: i686,        libc: glibc, image: "python:3.13-slim",   platform: linux/386 }
+          - { arch: armv7,       libc: glibc, image: "python:3.13-slim",   platform: linux/arm/v7,   qemu: true }
+          - { arch: ppc64le,     libc: glibc, image: "python:3.13-slim",   platform: linux/ppc64le,  qemu: true }
+          - { arch: s390x,       libc: glibc, image: "python:3.13-slim",   platform: linux/s390x,    qemu: true }
+          - { arch: riscv64,     libc: glibc, image: "python:3.13-slim",   platform: linux/riscv64,  qemu: true }
+          - { arch: amd64-musl,  libc: musl,  image: "python:3.13-alpine", platform: linux/amd64 }
+          - { arch: i686-musl,   libc: musl,  image: "python:3.13-alpine", platform: linux/386 }
+          - { arch: armv7-musl,  libc: musl,  image: "python:3.13-alpine", platform: linux/arm/v7,   qemu: true }
+          - { arch: armv6-musl,  libc: musl,  image: "python:3.13-alpine", platform: linux/arm/v6,   qemu: true }
+          - { arch: ppc64le-musl,libc: musl,  image: "python:3.13-alpine", platform: linux/ppc64le,  qemu: true }
+          - { arch: s390x-musl,  libc: musl,  image: "python:3.13-alpine", platform: linux/s390x,    qemu: true }
+          - { arch: riscv64-musl,libc: musl,  image: "python:3.13-alpine", platform: linux/riscv64,  qemu: true }
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - if: ${{ matrix.qemu }}
+        uses: docker/setup-qemu-action@v4.2.0
+      - name: Build binary (${{ matrix.libc }})
+        run: |
+          set -euo pipefail
+          bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
+          out="sloppyparty-linux-${{ matrix.arch }}"
+          if [ "${{ matrix.libc }}" = musl ]; then
+            docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} sh -euc '
+              apk add --no-cache build-base libffi-dev curl
+              pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
+              pip install ".[ftpd,tftpd,audiotags]"
+              PYTHON=python3 sh packaging/ci/fetch-webdeps.sh
+              pyinstaller packaging/pyinstaller/sloppyparty.spec
+              ./dist/sloppyparty --version
+              mv dist/sloppyparty dist/'"$out"'
+            '
+          else
+            docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euc '
+              apt-get update && apt-get install -y --no-install-recommends build-essential curl
+              pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
+              pip install ".[ftpd,tftpd,audiotags]"
+              PYTHON=python3 bash packaging/ci/fetch-webdeps.sh
+              pyinstaller packaging/pyinstaller/sloppyparty.spec
+              ./dist/sloppyparty --version
+              mv dist/sloppyparty dist/'"$out"'
+            '
+          fi
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-linux-${{ matrix.arch }}
+          path: dist/sloppyparty-linux-${{ matrix.arch }}
+          if-no-files-found: error
+
+  # Everything below runs only after ALL builds succeed. binaries-extra may be
+  # skipped (gated), so this uses !cancelled() + explicit success checks on the core
+  # jobs rather than depending on the optional one.
+  release:
+    needs: [decide, version, gate, dist, sfx, binaries-linux, binaries-macos, binaries-windows, binaries-extra]
+    if: >-
+      ${{ !cancelled()
+        && needs.decide.outputs.release == 'true'
+        && needs.gate.result == 'success'
+        && needs.dist.result == 'success'
+        && needs.sfx.result == 'success'
+        && needs.binaries-linux.result == 'success'
+        && needs.binaries-macos.result == 'success'
+        && needs.binaries-windows.result == 'success'
+        && (needs.binaries-extra.result == 'success' || needs.binaries-extra.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the tag + create the Release
+      id-token: write   # PyPI Trusted Publishing (only used if enabled)
+    outputs:
+      version: ${{ needs.version.outputs.new }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect release assets
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # wheel + sdist + SFX + every binary the build jobs produced
+          find artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' \
+            -o -name 'sloppyparty-sfx.py' -o -name 'sloppyparty-linux-*' \
+            -o -name 'sloppyparty-macos-*' -o -name 'sloppyparty-windows-*' \) \
+            -exec cp -t out {} +
+          ( cd out && sha256sum -- * > SHA256SUMS )
+          echo "=== release assets ==="; ls -la out; echo; cat out/SHA256SUMS
+
+      # Publish wheel + sdist to PyPI via Trusted Publishing. DISABLED by default:
+      # set repo variable PUBLISH_PYPI=true AND configure a trusted publisher for
+      # ptweezy/sloppyparty on PyPI (and claim the name) to turn it on.
+      - name: Publish to PyPI (Trusted Publishing)
+        if: ${{ vars.PUBLISH_PYPI == 'true' }}
+        uses: pypa/gh-action-pypi-publish@v1.14.0
+        with:
+          packages-dir: out
+          # out/ also holds binaries + SHA256SUMS; only .whl/.tar.gz are uploaded,
+          # but keep a clean dir if you prefer by pointing this at a wheels-only path.
+          verify-metadata: false
+
+      - name: Tag the release
+        env:
+          NEW: ${{ needs.version.outputs.new }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "sloppyparty-v$NEW" -m "sloppyparty v$NEW"
+          git push origin "refs/tags/sloppyparty-v$NEW"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3.0.1
+        with:
+          tag_name: sloppyparty-v${{ needs.version.outputs.new }}
+          name: sloppyparty v${{ needs.version.outputs.new }}
+          generate_release_notes: true   # auto "What's Changed" since the previous tag
+          files: out/*
+
+  # Build + push the GHCR image variants at the released version.
+  docker:
+    needs: [decide, version, release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.version.outputs.new }}
+    secrets: inherit
+
+  # Update the Homebrew tap (ptweezy/homebrew-tap) so `brew install
+  # ptweezy/tap/sloppyparty` tracks releases. Skips (with a warning) if
+  # HOMEBREW_TAP_TOKEN is unset. Serves the native linux/macOS binaries.
+  homebrew:
+    needs: [decide, version, release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Update Homebrew tap formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.version.outputs.new }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not set; skipping Homebrew update."; exit 0
+          fi
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o SHA256SUMS \
+            "https://github.com/${{ github.repository }}/releases/download/sloppyparty-v${VERSION}/SHA256SUMS"
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/ptweezy/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          bash packaging/homebrew/render-formula.sh "$VERSION" SHA256SUMS packaging/homebrew/sloppyparty.rb.tmpl > tap/Formula/sloppyparty.rb
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- Formula/sloppyparty.rb; then
+            echo "Formula already current for ${VERSION}."; exit 0
+          fi
+          git add Formula/sloppyparty.rb
+          git commit -m "sloppyparty ${VERSION}"
+          git push
