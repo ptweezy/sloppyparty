@@ -1,6 +1,8 @@
 <img src="https://github.com/ptweezy/copyparty/raw/hovudstraum/docs/logo.svg" width="250" align="right"/>
 
-### 💾🎉 sloppyparty (ptweezy's own version of copyparty, with AI slop enhancements including realtime browser transcoding)
+### 💾🎉 sloppyparty 
+
+my own version of copyparty, with blackjack and AI slop enhancements including realtime browser transcoding
 
 turn almost any device into a file server with resumable uploads/downloads using [*any*](#browser-support) web browser
 
