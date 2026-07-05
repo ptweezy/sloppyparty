@@ -1024,7 +1024,8 @@ window.baguetteBox = (function () {
     }
 
     // switch a <video> element from the (unplayable) source file to an
-    // on-the-fly HLS transcode served at  <source>/.hls/index.m3u8
+    // on-the-fly adaptive-bitrate HLS transcode served at  <source>/.hls/master.m3u8
+    // (the master lists several renditions; the player picks by screen + bandwidth)
     function load_hls(image, raw_src) {
         if (image.hls_wd) { clearTimeout(image.hls_wd); image.hls_wd = 0; }
         image.hls_tried = 1;
@@ -1032,7 +1033,7 @@ window.baguetteBox = (function () {
 
         var u = raw_src, q = '', qi = u.indexOf('?');
         if (qi >= 0) { q = u.slice(qi); u = u.slice(0, qi); }
-        var hls_url = u + '/.hls/index.m3u8' + q;
+        var hls_url = u + '/.hls/master.m3u8' + q;
 
         // safari / ios play HLS natively; no library needed
         if (!window.Hls && image.canPlayType('application/vnd.apple.mpegurl')) {
@@ -1047,7 +1048,8 @@ window.baguetteBox = (function () {
             if (image.hls)
                 try { image.hls.destroy(); } catch (ex) { }
 
-            var h = image.hls = new window.Hls();
+            // capLevelToPlayerSize keeps the auto-picked rendition no larger than the video element
+            var h = image.hls = new window.Hls({ capLevelToPlayerSize: true });
             h.on(window.Hls.Events.MANIFEST_PARSED, function () {
                 var p = image.play();
                 if (p && p.catch)
