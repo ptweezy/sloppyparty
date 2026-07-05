@@ -4,6 +4,7 @@ this folder *mostly* contains third-party dependencies; run `make -C scripts/dep
 * `marked.js.gz` is the markdown rendering library [Marked](https://github.com/markedjs/marked)
 * `mini-fa.css.gz` and `mini-fa.woff` is a small subset of [fontawesome](https://github.com/FortAwesome/Font-Awesome)
 * `prism.css.gz` and `prism.js.gz` is the syntax highlighter [PrismJS](https://prismjs.com/)
+* `hls.light.js.gz` is the HLS video player [hls.js](https://github.com/video-dev/hls.js)
 * `scp.woff2` is a subset of the monospace font [Source Code Pro](https://github.com/adobe-fonts/source-code-pro)
 * `sha512.hw.js.gz` is the Wasm sha512 library [hash-wasm](https://github.com/Daninet/hash-wasm)
 

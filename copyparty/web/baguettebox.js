@@ -40,6 +40,9 @@ window.baguetteBox = (function () {
             /^[^?]+\.(a?png|avif|bmp|gif|hei[cf]s?|jfif|jpe?g|jxl|svg|tiff?|webp)(\?|$)/i :
             /^[^?]+\.(a?png|avif|bmp|gif|jfif|jpe?g|jxl|svg|tiff?|webp)(\?|$)/i,
         re_v = /^[^?]+\.(webm|mkv|mp4|m4v|mov)(\?|$)/i,
+        // containers browsers usually can't demux natively; start to transcode these upfront
+        // rather than waiting for a native-playback error that won't fire
+        re_vhls = /\.(mkv|avi|wmv|flv|ts|m2ts|mts|mpe?g|vob|ogm|rm|rmvb|divx|asf|3gp)(\?|$)/i,
         re_cbz = /^[^?]+\.(cbz)(\?|$)/i,
         anims = ['slideIn', 'fadeIn', 'none'],
         data = {},  // all galleries
@@ -877,6 +880,10 @@ window.baguetteBox = (function () {
             if (v == keep)
                 continue;
 
+            if (v.hls) {
+                try { v.hls.destroy(); } catch (ex) { }
+                v.hls = null;
+            }
             unbind(v, 'touchstart', vtouch, nonPassiveEvent);
             unbind(v, 'error', lerr);
             v.src = '';
@@ -906,7 +913,72 @@ window.baguetteBox = (function () {
         }
     }
 
+    var _hlsjs_cbs = null;
+    function ensure_hls_js(cb) {
+        if (window.Hls)
+            return cb();
+
+        if (_hlsjs_cbs) {
+            _hlsjs_cbs.push(cb);
+            return;
+        }
+        _hlsjs_cbs = [cb];
+        import_js(SR + '/.cpr/w/deps/hls.light.js', function () {
+            var cbs = _hlsjs_cbs;
+            _hlsjs_cbs = null;
+            for (var a = 0; a < cbs.length; a++)
+                try { cbs[a](); } catch (ex) { }
+        }, function () {
+            _hlsjs_cbs = null;
+            toast.err(20, 'failed to load the video transcoder (hls.js)');
+        });
+    }
+
+    // switch a <video> element from the (unplayable) source file to an
+    // on-the-fly HLS transcode served at  <source>/.hls/index.m3u8
+    function load_hls(image, raw_src) {
+        image.hls_tried = 1;
+
+        var u = raw_src, q = '', qi = u.indexOf('?');
+        if (qi >= 0) { q = u.slice(qi); u = u.slice(0, qi); }
+        var hls_url = u + '/.hls/index.m3u8' + q;
+
+        // safari / ios play HLS natively; no library needed
+        if (!window.Hls && image.canPlayType('application/vnd.apple.mpegurl')) {
+            image.setAttribute('src', hls_url);
+            return;
+        }
+        if (!window.Hls) {
+            ensure_hls_js(function () { load_hls(image, raw_src); });
+            return;
+        }
+        if (window.Hls.isSupported()) {
+            if (image.hls)
+                try { image.hls.destroy(); } catch (ex) { }
+
+            var h = image.hls = new window.Hls();
+            h.on(window.Hls.Events.MANIFEST_PARSED, function () {
+                var p = image.play();
+                if (p && p.catch)
+                    p.catch(function () { });
+            });
+            h.loadSource(hls_url);
+            h.attachMedia(image);
+            return;
+        }
+        image.setAttribute('src', hls_url);
+    }
+
     function lerr() {
+        // on-the-fly transcode fallback: the browser could not decode the
+        // source file, so retry through an HLS transcode (unless the HLS
+        // stream itself is what failed, or this is an image)
+        if (window.have_vcode && this.tagName == 'VIDEO' && this.rawsrc && !this.hls_tried) {
+            console.log('bb-vcode: native playback failed; switching to transcode');
+            load_hls(this, this.rawsrc);
+            return;
+        }
+
         var t;
         try {
             t = this.getAttribute('src');
@@ -945,6 +1017,7 @@ window.baguetteBox = (function () {
 
         var imageElement = galleryItem.imageElement,
             imageSrc = galleryItem.href || imageElement.href,
+            rawSrc = imageSrc,
             is_vid = re_v.test(imageSrc),
             thumbnailElement = imageElement.querySelector('img, video'),
             imageCaption = typeof options.captions === 'function' ?
@@ -979,14 +1052,22 @@ window.baguetteBox = (function () {
             if (!options.async && callback)
                 callback();
         });
-        image.setAttribute('src', imageSrc);
-        if (is_vid) {
+        if (!is_vid)
+            image.setAttribute('src', imageSrc);
+        else {
+            // remember the un-cachebusted url so we can fall back to an HLS
+            // transcode if the browser can't decode the source (see lerr)
+            image.rawsrc = rawSrc;
             image.volume = clamp(fcfg_get('vol', dvol / 100), 0, 1);
             image.setAttribute('controls', 'controls');
             image.setAttribute('playsinline', '1');
             // ios ignores poster
             image.onended = vidEnd;
             image.onplay = image.onpause = ppHandler;
+            if (window.have_vcode && re_vhls.test(rawSrc))
+                load_hls(image, rawSrc);
+            else
+                image.setAttribute('src', imageSrc);
         }
         image.alt = thumbnailElement ? thumbnailElement.alt || '' : '';
         if (options.titleTag && imageCaption)

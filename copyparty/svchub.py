@@ -43,6 +43,7 @@ from .authsrv import BAD_CFG, AuthSrv, derive_args, n_du_who, n_ver_who
 from .bos import bos
 from .cert import ensure_cert
 from .fsutil import ramdisk_chk
+from .hls import HlsSrv, ff_have_enc
 from .mtag import HAVE_FFMPEG, HAVE_FFPROBE, HAVE_MUTAGEN, TH_BWRAP
 from .pwhash import HAVE_ARGON2
 from .sutil import close_pools as sutil_close_pools
@@ -391,6 +392,20 @@ class SvcHub(object):
         if args.log_fk:
             args.log_fk = re.compile(args.log_fk)
 
+        # on-the-fly video transcoding (HLS); requires FFmpeg with libx264+aac.
+        # must run before AuthSrv so the have_vcode client-flag is correct
+        args.have_x264 = args.have_aac = False
+        if not args.no_vcode:
+            if not HAVE_FFMPEG or not HAVE_FFPROBE:
+                args.no_vcode = True
+                self.log("thumb", "setting --no-vcode because FFmpeg or FFprobe is not available", 6)
+            else:
+                args.have_x264 = ff_have_enc("libx264")
+                args.have_aac = ff_have_enc("aac")
+                if not (args.have_x264 and args.have_aac):
+                    t = "disabling video transcoding because FFmpeg lacks the libx264 and/or aac encoder"
+                    self.log("thumb", t, 3)
+
         # initiate all services to manage
         self.asrv = AuthSrv(self.args, self.log, dargs=self.dargs)
         ramdisk_chk(self.asrv)
@@ -434,6 +449,7 @@ class SvcHub(object):
 
         self.args.th_dec = list(decs.keys())
         self.thumbsrv = None
+        self.hlssrv = None
         want_ff = False
         if not args.no_thumb:
             t = ", ".join(self.args.th_dec) or "(None available)"
@@ -463,6 +479,9 @@ class SvcHub(object):
 
         if want_ff and ANYWIN:
             self.log("thumb", "download FFmpeg to fix it:\033[0m " + FFMPEG_URL, 3)
+
+        if not args.no_vcode and args.have_x264 and args.have_aac:
+            self.hlssrv = HlsSrv(self)
 
         if not args.no_acode:
             if not re.match("^(0|[qv][0-9]|[0-9]{2,3}k)$", args.q_mp3.lower()):
@@ -1222,7 +1241,9 @@ class SvcHub(object):
 
         zs = "th_bwrap"
         for k in zs.split(" "):
-            zsl = [x for x in str(getattr(al, k)).split(" ") if x]
+            # --th-bwrap is only registered on linux (bwrap is linux-only), so
+            # default to empty on other platforms instead of crashing at boot
+            zsl = [x for x in str(getattr(al, k, "")).split(" ") if x]
             zbl = [x.encode("ascii", "replace") for x in zsl]
             setattr(al, k + "_s", zsl)
             setattr(al, k + "_b", zbl)
@@ -1665,6 +1686,9 @@ class SvcHub(object):
             if hasattr(self, "smbd"):
                 slp = max(slp, time.time() + 0.5)
                 tasks.append(Daemon(self.smbd.stop, "smbd"))
+
+            if self.hlssrv:
+                self.hlssrv.shutdown()
 
             if self.thumbsrv:
                 self.thumbsrv.shutdown()

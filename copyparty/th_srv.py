@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess as sp
 import tempfile
 import threading
@@ -18,6 +19,7 @@ from queue import Queue
 from .__init__ import ANYWIN, PY2, TYPE_CHECKING, unicode
 from .authsrv import VFS
 from .bos import bos
+from .hls import hls_cfg
 from .mtag import (
     HAVE_FFMPEG,
     HAVE_FFPROBE,
@@ -68,6 +70,9 @@ EXTS_AC = set(["opus", "owa", "caf", "mp3", "flac", "wav"])
 EXTS_SPEC_SAFE = set("aif aiff flac mp3 opus wav".split())
 
 PTN_TS = re.compile("^-?[0-9a-f]{8,10}$")
+
+# name of an HLS cache entry directory: <fnhash-b64(24)>.<mtime-hex>
+PTN_VC = re.compile(r"^[A-Za-z0-9_-]{24}\.[0-9a-f]+$")
 
 # for n in {1..100}; do rm -rf /home/ed/Pictures/wp/.hist/th/ ; python3 -m copyparty -qv /home/ed/Pictures/wp/::r --th-no-webp --th-qv $n --th-dec pil >/dev/null 2>&1 & p=$!; printf '\033[A\033[J%3d ' $n; while true; do sleep 0.1; curl -s 127.1:3923 >/dev/null && break; done; curl -s '127.1:3923/?tar=j' >/dev/null ; cat /home/ed/Pictures/wp/.hist/th/1n/bs/1nBsjDetfie1iDq3y2D4YzF5/*.* | wc -c; kill $p; wait >/dev/null 2>&1; done
 # filesize-equivalent, not quality (ff looks much shittier)
@@ -1450,13 +1455,14 @@ class ThumbSrv(object):
             time.sleep(interval)
 
     def clean(self, histpath: str) -> int:
-        cfgi = cfga = ""
+        cfgi = cfga = cfgv = ""
         for vn in self.asrv.vfs.all_vols.values():
             if vn.histpath == histpath:
                 cfgi = self.volcfgi(vn)
                 cfga = self.volcfga(vn)
+                cfgv = hls_cfg(self.args, vn)
                 break
-        for cfg, cat in ((cfgi, "th"), (cfga, "ac")):
+        for cfg, cat in ((cfgi, "th"), (cfga, "ac"), (cfgv, "vc")):
             if not cfg:
                 continue
             try:
@@ -1473,7 +1479,7 @@ class ThumbSrv(object):
             shutil.rmtree(zs)
 
         ret = 0
-        for cat in ["th", "ac"]:
+        for cat in ["th", "ac", "vc"]:
             top = os.path.join(histpath, cat)
             if not bos.path.isdir(top):
                 continue
@@ -1501,6 +1507,16 @@ class ThumbSrv(object):
         for f, inf in ents:
             fp = os.path.join(thumbpath, f)
             cmp = fp.lower().replace("\\", "/")
+
+            # HLS cache entry: a per-file directory (playlist + segments);
+            # expired by its own mtime, which playback keeps fresh via poke
+            if cat == "vc" and stat.S_ISDIR(inf.st_mode) and PTN_VC.match(f):
+                if now - inf.st_mtime > maxage:
+                    ndirs += 1
+                    self.log("rm -rf [{}]".format(fp))
+                    shutil.rmtree(fp, ignore_errors=True)
+
+                continue
 
             # "top" or b64 prefix/full (a folder)
             if len(f) <= 3 or len(f) == 24:
