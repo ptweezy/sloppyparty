@@ -1,0 +1,169 @@
+name: docker
+
+# Build copyparty's container image variants and, on release, publish the
+# multi-arch images to GHCR. copyparty ships FEATURE variants (not distro
+# variants); each is an alpine image with the SFX as payload:
+#
+#     variant   image tag suffix   what it adds
+#     -------   ----------------   ------------
+#     ac        (none = default)   ffmpeg audio/video thumbnails + transcoding
+#     min       -min               core only, no media features
+#     im        -im                imagemagick thumbnails
+#     iv        -iv                ffmpeg + vips thumbnails
+#     dj        -dj                ffmpeg + audio key/BPM detection
+#
+# `ac` is copyparty's recommended everyday image, so it owns the bare
+# `latest`/`<version>` tags; the others get `latest-<variant>` / `<version>-<variant>`.
+#
+# NOTE: these build with STOCK alpine ffmpeg (via `i/stock_ffmpeg`), exactly like
+# copyparty's `make ac`. copyparty's official images ship a custom fdk-aac ffmpeg
+# built by scripts/docker/base; that heavier vendored path is not reproduced here.
+#
+# Triggers:
+#   - push (build-only gate): build the default `ac` image for amd64, no push --
+#     proves the Dockerfiles still build on every commit.
+#   - release (workflow_call): build + push every variant, multi-arch, at the
+#     released version. (A Release made by GITHUB_TOKEN emits no `release:published`
+#     event, so release.yml calls this workflow directly.)
+#   - workflow_dispatch: (re)build + push a chosen tag, all variants.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version to build and push (e.g. 1.0.9)."
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. 1.0.4). Defaults to latest release."
+        type: string
+        required: false
+  push:
+    branches: ["**"]
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Build the SFX once (it is the payload every variant bundles) and stage the
+  # docker build context (i/ = sfx + bin/mtag + stock_ffmpeg) that the Dockerfiles
+  # + innvikler.sh expect. Uploaded so the image matrix reuses it.
+  payload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build SFX and stage docker context
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends bzip2
+          pip install jinja2
+          bash scripts/make-sfx.sh fast dl-wd
+          # Stage i/ exactly like scripts/docker/Makefile's `i` target does.
+          cd scripts/docker
+          rm -rf i && mkdir i
+          cp ../../dist/copyparty-sfx.py i/
+          tar -cC ../.. bin/mtag | tar -xC i
+          touch i/stock_ffmpeg            # use stock alpine ffmpeg (skip the vendored fdk-aac build)
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: docker-context
+          path: scripts/docker/i
+          if-no-files-found: error
+          retention-days: 1
+
+  image:
+    needs: payload
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # push to GHCR (release / dispatch only)
+    strategy:
+      fail-fast: false   # one variant failing must not cancel the others
+      matrix:
+        include:
+          - { variant: ac,  suffix: "",     add_pkg: "ffmpeg" }   # default: owns bare latest/<version>
+          - { variant: min, suffix: "-min", add_pkg: "" }
+          - { variant: im,  suffix: "-im",  add_pkg: "" }
+          - { variant: iv,  suffix: "-iv",  add_pkg: "ffmpeg" }
+          - { variant: dj,  suffix: "-dj",  add_pkg: "ffmpeg" }
+    steps:
+      - name: Resolve build target
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          CALL_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=""; push=false
+          if [ -n "${CALL_VERSION:-}" ]; then
+            version="$CALL_VERSION"; push=true        # called from release.yml
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            version="${INPUT_TAG:-}"; push=true
+          fi
+          # push builds the full arch set + push; the per-commit gate is amd64-only.
+          if [ "$push" = true ]; then
+            platforms="linux/amd64,linux/arm64"
+          else
+            platforms="linux/amd64"
+          fi
+          { echo "version=$version"; echo "push=$push"; echo "platforms=$platforms"; } >> "$GITHUB_OUTPUT"
+          echo "::notice::variant=${{ matrix.variant }} event=$EVENT version=${version:-<none>} push=$push"
+
+      - uses: actions/checkout@v7.0.0
+
+      - name: Restore docker context (SFX payload)
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: docker-context
+          path: scripts/docker/i
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}   # ghcr.io/ptweezy/sloppyparty (lowercased by the action)
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }}
+          tags: |
+            type=raw,value=${{ steps.target.outputs.version }},enable=${{ steps.target.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ steps.target.outputs.push == 'true' }}
+            type=raw,value=ci-build,enable=${{ steps.target.outputs.push == 'false' }}
+
+      - name: Log in to GHCR
+        if: steps.target.outputs.push == 'true'
+        uses: docker/login-action@v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - uses: docker/setup-qemu-action@v4.2.0
+      - uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build and push
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: scripts/docker
+          file: scripts/docker/Dockerfile.${{ matrix.variant }}
+          platforms: ${{ steps.target.outputs.platforms }}
+          push: ${{ steps.target.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ADD_PKG=${{ matrix.add_pkg }}
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
