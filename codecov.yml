@@ -1,0 +1,22 @@
+# Codecov here is purely informational -- it publishes the merged coverage number
+# for the README badge and PR context, but never blocks: the ci.yml workflow's own
+# pass/fail is the single source of truth for gating.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# Each matrix cell uploads under its own flag (os-pyVERSION). carryforward keeps a
+# flag's last result when a cell doesn't upload on some run, so combined coverage
+# stays stable instead of dropping when a row is skipped.
+flag_management:
+  default_rules:
+    carryforward: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: true
