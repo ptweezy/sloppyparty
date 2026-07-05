@@ -1,0 +1,263 @@
+name: build
+
+# Per-commit build verification. Builds everything release.yml ships -- the wheel
+# + sdist, the copyparty SFX (copyparty-sfx.py), and the self-contained PyInstaller
+# binaries for Linux (amd64/arm64/i686/armv7/ppc64le/s390x/riscv64 in glibc and
+# musl, plus armv6-musl), macOS (arm64/amd64) and Windows (amd64/arm64) -- on every
+# push, but WITHOUT publishing, tagging or pushing anything. A broken build (or a
+# bundle the `--version` smoke test catches) fails the commit early rather than at
+# release time.
+#
+# The build steps are kept identical to their release.yml counterparts (same
+# pyinstaller pin, same `--version` smoke test, same matrices) so drift is easy to
+# spot; only the publish/sign/version-pin differences are intentional. Binaries
+# build at the version currently in copyparty/__version__.py (no release bump).
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PIP_RETRIES: "5"
+  PIP_TIMEOUT: "60"
+  PYINSTALLER_VER: "6.21.0"
+
+jobs:
+  # Wheel + sdist, built and twine-checked exactly as release.yml does for PyPI --
+  # but never uploaded. Kept only as a downloadable artifact.
+  dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build wheel + sdist
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*.whl dist/*.tar.gz
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  # copyparty's signature artifact: the self-extracting single-file server. `dl-wd`
+  # fetches the vendored web deps (marked/easymde/prism/...) from a reference SFX;
+  # `fast` uses cheaper compression.
+  sfx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0   # make-sfx reads the version via `git describe`, else the file
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build SFX + pyz
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bzip2
+          pip install jinja2
+          bash scripts/make-sfx.sh fast dl-wd
+          mv dist/copyparty-sfx.py dist/sloppyparty-sfx.py
+          python dist/sloppyparty-sfx.py --version || true
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-sfx
+          path: dist/sloppyparty-sfx.py
+          if-no-files-found: error
+          retention-days: 7
+
+  # glibc PyInstaller binaries, one per arch on a native runner (no QEMU).
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          pip install "pyinstaller==${PYINSTALLER_VER}"
+          pip install ".[ftpd,tftpd,audiotags]"    # copyparty + jinja2 + pure-python extras
+          bash packaging/ci/fetch-webdeps.sh        # populate copyparty/web/deps before freezing
+          pyinstaller packaging/pyinstaller/sloppyparty.spec
+          ./dist/sloppyparty --version              # smoke test: fails the job if the bundle is broken
+          mv dist/sloppyparty "dist/sloppyparty-linux-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-linux-${{ matrix.arch }}
+          path: dist/sloppyparty-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # glibc binaries for arches with no native runner (i686 native on amd64; the rest
+  # under QEMU), built inside python:3.13-slim since PyInstaller can't cross-compile.
+  # copyparty is pure-Python, so the container only compiles the PyInstaller
+  # bootloader from sdist on the exotic arches -- build-essential covers that.
+  binaries-glibc-extra:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: i686,    platform: linux/386 }
+          - { arch: armv7,   platform: linux/arm/v7,   qemu: true }
+          - { arch: ppc64le, platform: linux/ppc64le,  qemu: true }
+          - { arch: s390x,   platform: linux/s390x,    qemu: true }
+          - { arch: riscv64, platform: linux/riscv64,  qemu: true }
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - if: ${{ matrix.qemu }}
+        uses: docker/setup-qemu-action@v4.2.0
+      - name: Build binary (Debian/glibc container)
+        run: |
+          set -euo pipefail
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/src" -w /src python:3.13-slim bash -euc '
+              apt-get update
+              apt-get install -y --no-install-recommends build-essential curl
+              pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
+              pip install ".[ftpd,tftpd,audiotags]"
+              PYTHON=python3 bash packaging/ci/fetch-webdeps.sh
+              pyinstaller packaging/pyinstaller/sloppyparty.spec
+              ./dist/sloppyparty --version
+              mv dist/sloppyparty dist/sloppyparty-linux-${{ matrix.arch }}
+            '
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-linux-${{ matrix.arch }}
+          path: dist/sloppyparty-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # musl/Alpine binaries. GitHub runners are glibc, so the build runs inside an
+  # Alpine container via `docker run` (checkout/upload stay on the glibc host).
+  binaries-musl:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64,   platform: linux/amd64 }
+          - { arch: arm64,   platform: linux/arm64,    runner: ubuntu-24.04-arm }
+          - { arch: i686,    platform: linux/386 }
+          - { arch: armv7,   platform: linux/arm/v7,   qemu: true }
+          - { arch: armv6,   platform: linux/arm/v6,   qemu: true }
+          - { arch: ppc64le, platform: linux/ppc64le,  qemu: true }
+          - { arch: s390x,   platform: linux/s390x,    qemu: true }
+          - { arch: riscv64, platform: linux/riscv64,  qemu: true }
+    runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - if: ${{ matrix.qemu }}
+        uses: docker/setup-qemu-action@v4.2.0
+      - name: Build binary (Alpine/musl)
+        run: |
+          set -euo pipefail
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/src" -w /src python:3.13-alpine sh -euc '
+              apk add --no-cache build-base libffi-dev curl
+              pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
+              pip install ".[ftpd,tftpd,audiotags]"
+              PYTHON=python3 sh packaging/ci/fetch-webdeps.sh
+              pyinstaller packaging/pyinstaller/sloppyparty.spec
+              ./dist/sloppyparty --version
+              mv dist/sloppyparty dist/sloppyparty-linux-${{ matrix.arch }}-musl
+            '
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-linux-${{ matrix.arch }}-musl
+          path: dist/sloppyparty-linux-${{ matrix.arch }}-musl
+          if-no-files-found: error
+          retention-days: 7
+
+  # macOS binaries, one per arch on a native runner (PyInstaller emits the runner's
+  # arch). The `file` check guards against Rosetta silently building x86_64 on arm.
+  binaries-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-15 }
+          - { arch: amd64, runner: macos-15-intel }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          pip install "pyinstaller==${PYINSTALLER_VER}"
+          pip install ".[ftpd,tftpd,audiotags]"
+          bash packaging/ci/fetch-webdeps.sh
+          pyinstaller packaging/pyinstaller/sloppyparty.spec
+          ./dist/sloppyparty --version
+          case "${{ matrix.arch }}" in amd64) want=x86_64 ;; arm64) want=arm64 ;; esac
+          file dist/sloppyparty | grep -q "$want"
+          mv dist/sloppyparty "dist/sloppyparty-macos-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-macos-${{ matrix.arch }}
+          path: dist/sloppyparty-macos-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Windows binaries: amd64 on the hosted runner, arm64 on windows-11-arm. bash
+  # (git-bash ships on the runners) keeps the steps identical to the Linux jobs.
+  binaries-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: windows-latest }
+          - { arch: arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          pip install "pyinstaller==${PYINSTALLER_VER}"
+          pip install ".[ftpd,tftpd,audiotags]"
+          bash packaging/ci/fetch-webdeps.sh
+          pyinstaller packaging/pyinstaller/sloppyparty.spec
+          ./dist/sloppyparty.exe --version
+          mv dist/sloppyparty.exe "dist/sloppyparty-windows-${{ matrix.arch }}.exe"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sloppyparty-windows-${{ matrix.arch }}
+          path: dist/sloppyparty-windows-${{ matrix.arch }}.exe
+          if-no-files-found: error
+          retention-days: 7
