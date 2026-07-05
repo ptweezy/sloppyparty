@@ -43,7 +43,7 @@ from .authsrv import BAD_CFG, AuthSrv, derive_args, n_du_who, n_ver_who
 from .bos import bos
 from .cert import ensure_cert
 from .fsutil import ramdisk_chk
-from .hls import HlsSrv, ff_have_enc, probe_hwenc, probe_tonemap
+from .hls import HlsSrv, ff_have_enc, probe_hwenc, probe_readrate, probe_tonemap
 from .mtag import HAVE_FFMPEG, HAVE_FFPROBE, HAVE_MUTAGEN, TH_BWRAP
 from .pwhash import HAVE_ARGON2
 from .sutil import close_pools as sutil_close_pools
@@ -397,6 +397,7 @@ class SvcHub(object):
         args.have_x264 = args.have_aac = False
         args.vt_hwenc = []  # validated hardware h264 encoders (abstract names)
         args.vt_tm = ""  # working HDR->SDR tonemap method (placebo/opencl/zscale)
+        args.vt_rr = 0  # realtime-pacing support level (0=none 1=readrate 2=+burst)
         if not args.no_vcode:
             if not HAVE_FFMPEG or not HAVE_FFPROBE:
                 args.no_vcode = True
@@ -410,6 +411,7 @@ class SvcHub(object):
                 else:
                     args.vt_hwenc = probe_hwenc(self.log)
                     args.vt_tm = probe_tonemap(self.log)
+                    args.vt_rr = probe_readrate(self.log)
 
         # initiate all services to manage
         self.asrv = AuthSrv(self.args, self.log, dargs=self.dargs)
