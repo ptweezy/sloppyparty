@@ -425,8 +425,10 @@ jobs:
       - name: Collect release assets
         run: |
           set -euo pipefail
-          mkdir -p out
-          # wheel + sdist + SFX + every binary the build jobs produced
+          mkdir -p out wheels
+          # wheels/ holds ONLY the PyPI distributions (twine rejects other files).
+          find artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp -t wheels {} +
+          # out/ holds every GitHub Release asset: wheel + sdist + SFX + all binaries.
           find artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' \
             -o -name 'sloppyparty-sfx.py' -o -name 'sloppyparty-linux-*' \
             -o -name 'sloppyparty-macos-*' -o -name 'sloppyparty-windows-*' \) \
@@ -441,9 +443,7 @@ jobs:
         if: ${{ vars.PUBLISH_PYPI == 'true' }}
         uses: pypa/gh-action-pypi-publish@v1.14.0
         with:
-          packages-dir: out
-          # out/ also holds binaries + SHA256SUMS; only .whl/.tar.gz are uploaded,
-          # but keep a clean dir if you prefer by pointing this at a wheels-only path.
+          packages-dir: wheels   # wheels-only (twine rejects non-distribution files)
           verify-metadata: false
 
       - name: Tag the release
