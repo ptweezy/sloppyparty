@@ -33,18 +33,14 @@ cd "$work"
 # Strip type hints + "# !rm" markers in place (walks cwd = this copy).
 "$PY" "$REPO/scripts/strip_hints/a.py"
 
-sel=(-k "not TestVFS")
-if [ "${SLOPPY_ALL_TESTS:-}" = "1" ]; then
-  sel=()
-  echo "SLOPPY_ALL_TESTS=1 -> running the full suite (incl. known-upstream-broken TestVFS)"
-else
-  echo "deselecting 3 TestVFS cases that also fail on pristine upstream (set SLOPPY_ALL_TESTS=1 to include)"
-fi
+# run_unittest.py discovers the suite and drops the known-upstream-broken tests
+# (unittest's -k can't express "not X"); SLOPPY_ALL_TESTS=1 runs everything.
+driver="$REPO/packaging/ci/run_unittest.py"
 
 if [ "${COVERAGE:-}" = "1" ]; then
-  "$PY" -m coverage run --source=copyparty -m unittest discover -s tests "${sel[@]}"
+  "$PY" -m coverage run --source=copyparty "$driver" tests
   "$PY" -m coverage xml -o "$REPO/coverage.xml"
   "$PY" -m coverage report 2>/dev/null | tail -15 || true
 else
-  "$PY" -m unittest discover -s tests "${sel[@]}"
+  "$PY" "$driver" tests
 fi
