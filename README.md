@@ -1,4 +1,4 @@
-<img src="https://github.com/ptweezy/copyparty/raw/hovudstraum/docs/logo.svg" width="250" align="right"/>
+<img src="https://github.com/ptweezy/copyparty/raw/develop/docs/logo.svg" width="250" align="right"/>
 
 ### 💾🎉 sloppyparty 
 
@@ -289,7 +289,7 @@ also see [comparison to similar software](./docs/versus.md)
 * download
   * ☑ single files in browser
   * ☑ [folders as zip / tar files](#zip-downloads)
-  * ☑ [FUSE client](https://github.com/9001/copyparty/tree/hovudstraum/bin#partyfusepy) (read-only)
+  * ☑ [FUSE client](https://github.com/9001/copyparty/tree/develop/bin#partyfusepy) (read-only)
 * browser
   * ☑ [navpane](#navpane) (directory tree sidebar)
   * ☑ file manager (cut/paste, delete, [batch-rename](#batch-rename))
@@ -456,7 +456,7 @@ upgrade notes
   * http-api: delete/move is now `POST` instead of `GET`
   * everything other than `GET` and `HEAD` must pass [cors validation](#cors)
 * `1.5.0` (2022-12-03): [new chunksize formula](https://github.com/9001/copyparty/commit/54e1c8d261df) for files larger than 128 GiB
-  * **users:** upgrade to the latest [cli uploader](https://github.com/9001/copyparty/blob/hovudstraum/bin/u2c.py) if you use that
+  * **users:** upgrade to the latest [cli uploader](https://github.com/9001/copyparty/blob/develop/bin/u2c.py) if you use that
   * **devs:** update third-party up2k clients (if those even exist)
 
 
@@ -474,7 +474,7 @@ upgrade notes
   * a mapping from a URL (`/music/`) to a folder on your server's local filesystem (`C:\Users\ed\Music`) which can then be accessed through copyparty, depending on the permissions and options you set on it -- see [accounts and volumes](#accounts-and-volumes)
 
 * can I change the 🌲 spinning pine-tree loading animation?
-  * [yeah...](https://github.com/9001/copyparty/tree/hovudstraum/docs/rice#boring-loader-spinner) :-(
+  * [yeah...](https://github.com/9001/copyparty/tree/develop/docs/rice#boring-loader-spinner) :-(
 
 * is it possible to block read-access to folders unless you know the exact URL for a particular file inside?
   * yes, using the [`g` permission](#accounts-and-volumes), see the examples there
@@ -489,7 +489,7 @@ upgrade notes
   * by default, a `.hist` folder is created inside each volume for the filesystem index, thumbnails, audio transcodes, and markdown document history. Use the `--hist` global-option or the `hist` volflag to move it somewhere else; see [database location](#database-location)
 
 * can I make copyparty download a file to my server if I give it a URL?
-  * yes, using [hooks](https://github.com/9001/copyparty/blob/hovudstraum/bin/hooks/wget.py)
+  * yes, using [hooks](https://github.com/9001/copyparty/blob/develop/bin/hooks/wget.py)
 
 * firefox refuses to connect over https, saying "Secure Connection Failed" or "SEC_ERROR_BAD_SIGNATURE", but the usual button to "Accept the Risk and Continue" is not shown
   * firefox has corrupted its certstore; fix this by exiting firefox, then find and delete the file named `cert9.db` somewhere in your firefox profile folder
@@ -504,7 +504,7 @@ upgrade notes
   * you need to install `FFmpeg` or `Pillow`; see [thumbnails](#thumbnails)
 
 * thumbnails are broken, specifically for photos and videos taken by iphones
-  * the [docker image](https://github.com/9001/copyparty/blob/hovudstraum/scripts/docker) and [bootable flashdrive](https://a.ocv.me/pub/stuff/edcd001/enterprise-edition/) are not able to read heif/heic images and h265/HEVC video due to [legal reasons](docs/bad-codecs.md)
+  * the [docker image](https://github.com/9001/copyparty/blob/develop/scripts/docker) and [bootable flashdrive](https://a.ocv.me/pub/stuff/edcd001/enterprise-edition/) are not able to read heif/heic images and h265/HEVC video due to [legal reasons](docs/bad-codecs.md)
 
 * thumbnails are broken (some images appear, but other files just get a blank box, and/or the broken-image placeholder)
   * probably due to a reverse-proxy messing with the request URLs and stripping the query parameters (`?th=w`), so check your URL rewrite rules
@@ -850,7 +850,7 @@ drag files/folders into the web-browser to upload
 dragdrop is the recommended way, but you may also:
 
 * select some files (not folders) in your file explorer and press CTRL-V inside the browser window
-* use the [command-line uploader](https://github.com/9001/copyparty/tree/hovudstraum/bin#u2cpy)
+* use the [command-line uploader](https://github.com/9001/copyparty/tree/develop/bin#u2cpy)
 * upload using [curl, sharex, ishare, ...](#client-examples)
 
 when uploading files through dragdrop or CTRL-V, this initiates an upload using `up2k`; there are two browser-based uploaders available:
@@ -1010,7 +1010,7 @@ semi-intentional limitations:
 * cleanup of expired shares only works when global option `e2d` is set, and/or at least one volume on the server has volflag `e2d`
 * only folders from the same volume are shared; if you are sharing a folder which contains other volumes, then the contents of those volumes will not be available
 * if you change [password hashing](#password-hashing) settings after creating a password-protected share, then that share will stop working
-* related to [IdP volumes being forgotten on shutdown](https://github.com/9001/copyparty/blob/hovudstraum/docs/idp.md#idp-volumes-are-forgotten-on-shutdown), any shares pointing into a user's IdP volume will be unavailable until that user makes their first request after a restart
+* related to [IdP volumes being forgotten on shutdown](https://github.com/9001/copyparty/blob/develop/docs/idp.md#idp-volumes-are-forgotten-on-shutdown), any shares pointing into a user's IdP volume will be unavailable until that user makes their first request after a restart
 * no option to "delete after first access" because tricky
   * when linking something to discord (for example) it'll get accessed by their scraper and that would count as a hit
   * browsers wouldn't be able to resume a broken download unless the requester's IP gets allowlisted for X minutes (ref. tricky)
@@ -1522,7 +1522,7 @@ on macos, connect from finder:
 
 to be able to edit existing files, the client must have the Delete-permission, and some webdav clients will also require the [daw](https://copyparty.eu/cli/#g-daw) volflag or global-option (not necessary if the client sends the `x-oc-mtime` header). Without `daw`, those clients will fail to modify existing files and instead create new copies with names like `notes.txt-1771978661.726032-3i9GPghL.txt`. **NOTE:** Enabling `daw` will also make all PUT-uploads overwrite existing files if the user has delete-access, so use with caution. Another alternative is the [dav-port](https://copyparty.eu/cli/#g-dav-port) option
 
-> note: if you have enabled [IdP authentication](#identity-providers) then that may cause issues for some/most webdav clients; see [the webdav section in the IdP docs](https://github.com/9001/copyparty/blob/hovudstraum/docs/idp.md#connecting-webdav-clients)
+> note: if you have enabled [IdP authentication](#identity-providers) then that may cause issues for some/most webdav clients; see [the webdav section in the IdP docs](https://github.com/9001/copyparty/blob/develop/docs/idp.md#connecting-webdav-clients)
 
 
 ### connecting to webdav from windows
@@ -2000,7 +2000,7 @@ but instead of using `-mte`, `-mth` is a better way to hide tags in the browser:
 
 tags that start with a `.` such as `.bpm` and `.dur`(ation) indicate numeric value
 
-see the beautiful mess of a dictionary in [mtag.py](https://github.com/9001/copyparty/blob/hovudstraum/copyparty/mtag.py) for the default mappings (should cover mp3,opus,flac,m4a,wav,aif,)
+see the beautiful mess of a dictionary in [mtag.py](https://github.com/9001/copyparty/blob/develop/copyparty/mtag.py) for the default mappings (should cover mp3,opus,flac,m4a,wav,aif,)
 
 `--no-mutagen` disables Mutagen and uses FFprobe instead, which...
 * is about 20x slower than Mutagen
@@ -2090,7 +2090,7 @@ the PUSH and REQ examples have `t3` (timeout after 3 seconds) because they block
 
 * the REQ example does `t3,j` to send extended upload-info as json instead of just the filesystem-path
 
-see [zmq-recv.py](https://github.com/9001/copyparty/blob/hovudstraum/bin/zmq-recv.py) if you need something to receive the messages with
+see [zmq-recv.py](https://github.com/9001/copyparty/blob/develop/bin/zmq-recv.py) if you need something to receive the messages with
 
 config file example; note that the hooks are additive options, so all of the xau options will take effect:
 
@@ -2634,7 +2634,7 @@ the homebrew package is maintained by the homebrew team (thanks!)
 
 requires a [flake-enabled](https://nixos.wiki/wiki/Flakes) installation of nix
 
-some recommended dependencies are enabled by default; [override the package](https://github.com/9001/copyparty/blob/hovudstraum/contrib/package/nix/copyparty/default.nix#L3-L22) if you want to add/remove some features/deps
+some recommended dependencies are enabled by default; [override the package](https://github.com/9001/copyparty/blob/develop/contrib/package/nix/copyparty/default.nix#L3-L22) if you want to add/remove some features/deps
 
 `ffmpeg-full` was chosen over `ffmpeg-headless` mainly because we need `withWebp` (and `withOpenmpt` is also nice) and being able to use a cached build felt more important than optimizing for size at the time -- PRs welcome if you disagree 👍
 
@@ -2679,7 +2679,7 @@ let
   copyparty = (import ./npins).copyparty;
 
   # or with fetchTarball:
-  copyparty = fetchTarball "https://github.com/9001/copyparty/archive/hovudstraum.tar.gz";
+  copyparty = fetchTarball "https://github.com/9001/copyparty/archive/develop.tar.gz";
 in
 
 {
@@ -2870,7 +2870,7 @@ interact with copyparty using non-browser clients
   * `(printf 'PUT /junk?pw=wark HTTP/1.1\r\n\r\n'; cat movie.mkv) | nc 127.0.0.1 3923`
   * `(printf 'PUT / HTTP/1.1\r\n\r\n'; cat movie.mkv) >/dev/tcp/127.0.0.1/3923`
 
-* python: [u2c.py](https://github.com/9001/copyparty/blob/hovudstraum/bin/u2c.py) is a command-line up2k client [(webm)](https://ocv.me/stuff/u2cli.webm)
+* python: [u2c.py](https://github.com/9001/copyparty/blob/develop/bin/u2c.py) is a command-line up2k client [(webm)](https://ocv.me/stuff/u2cli.webm)
   * file uploads, file-search, [folder sync](#folder-sync), autoresume of aborted/broken uploads
   * can be downloaded from copyparty: controlpanel -> connect -> [u2c.py](http://127.0.0.1:3923/.cpr/a/u2c.py)
   * see [./bin/README.md#u2cpy](bin/README.md#u2cpy)
@@ -2914,7 +2914,7 @@ NOTE: full bidirectional sync, like what [nextcloud](https://docs.nextcloud.com/
 
 * if you want bidirectional sync, then copyparty and syncthing *should* be entirely safe to combine; they should be able to collaborate on the same folders without causing any trouble for eachother. Many people do this, and there have been no issues so far. But, if you *do* encounter any problems, please [file a copyparty bug](https://github.com/9001/copyparty/issues/new/choose) and I'll try to help -- just keep in mind I've never used syncthing before :-)
 
-the commandline uploader [u2c.py](https://github.com/9001/copyparty/tree/hovudstraum/bin#u2cpy) with `--dr` is the best way to sync a folder to copyparty; verifies checksums and does files in parallel, and deletes unexpected files on the server after upload has finished which makes file-renames really cheap (it'll rename serverside and skip uploading)
+the commandline uploader [u2c.py](https://github.com/9001/copyparty/tree/develop/bin#u2cpy) with `--dr` is the best way to sync a folder to copyparty; verifies checksums and does files in parallel, and deletes unexpected files on the server after upload has finished which makes file-renames really cheap (it'll rename serverside and skip uploading)
 
 if you want to sync with `u2c.py` then:
 * the `e2dsa` option (either globally or volflag) must be enabled on the server for the volumes you're syncing into
@@ -2962,7 +2962,7 @@ if you want to run the copyparty server on your android device, see [install on 
 
 there is no iPhone app, but  the following shortcuts are almost as good:
 
-* [upload to copyparty](https://www.icloud.com/shortcuts/41e98dd985cb4d3bb433222bc1e9e770) ([offline](https://github.com/9001/copyparty/raw/hovudstraum/contrib/ios/upload-to-copyparty.shortcut)) ([png](https://user-images.githubusercontent.com/241032/226118053-78623554-b0ed-482e-98e4-6d57ada58ea4.png)) based on the [original](https://www.icloud.com/shortcuts/ab415d5b4de3467b9ce6f151b439a5d7) by [Daedren](https://github.com/Daedren) (thx!)
+* [upload to copyparty](https://www.icloud.com/shortcuts/41e98dd985cb4d3bb433222bc1e9e770) ([offline](https://github.com/9001/copyparty/raw/develop/contrib/ios/upload-to-copyparty.shortcut)) ([png](https://user-images.githubusercontent.com/241032/226118053-78623554-b0ed-482e-98e4-6d57ada58ea4.png)) based on the [original](https://www.icloud.com/shortcuts/ab415d5b4de3467b9ce6f151b439a5d7) by [Daedren](https://github.com/Daedren) (thx!)
   * can strip exif, upload files, pics, vids, links, clipboard
   * can download links and rehost the target file on copyparty (see first comment inside the shortcut)
   * pics become lowres if you share from gallery to shortcut, so better to launch the shortcut and pick stuff from there
@@ -3014,7 +3014,7 @@ when uploading files,
 * chrome is recommended (unfortunately), at least compared to firefox:
   * up to 90% faster when hashing, especially on SSDs
   * up to 40% faster when uploading over extremely fast internets
-  * but [u2c.py](https://github.com/9001/copyparty/blob/hovudstraum/bin/u2c.py) can be 40% faster than chrome again
+  * but [u2c.py](https://github.com/9001/copyparty/blob/develop/bin/u2c.py) can be 40% faster than chrome again
 
 * if you're cpu-bottlenecked, or the browser is maxing a cpu core:
   * up to 30% faster uploads if you hide the upload status list by switching away from the `[🚀]` up2k ui-tab (or closing it)
@@ -3158,7 +3158,7 @@ to install cfssl on windows:
 if you really wanna give copyparty an existing TLS certificate then do one of the following:
 * `--no-crt --cert server.pem` where `server.pem` is a concatenation of key + cert + chain (in that order), or...
 * `--no-crt --cert server.crt --certkey server.key` where `server.key` is the key, and `server.crt` is a concatenation of cert + chain (in that order)
-* file-extensions don't matter, but all files are expected to be [PEM-style](https://github.com/9001/copyparty/blob/hovudstraum/copyparty/res/insecure.pem)
+* file-extensions don't matter, but all files are expected to be [PEM-style](https://github.com/9001/copyparty/blob/develop/copyparty/res/insecure.pem)
 
 
 # recovering from crashes
@@ -3357,7 +3357,7 @@ first install one of the following:
 and then copypaste the following command into `a-Shell`:
 
 ```sh
-curl -L https://github.com/9001/copyparty/raw/refs/heads/hovudstraum/contrib/setup-ashell.sh | sh
+curl -L https://github.com/9001/copyparty/raw/refs/heads/develop/contrib/setup-ashell.sh | sh
 ```
 
 > if you want the latest copyparty beta, then do this instead:  
@@ -3395,7 +3395,7 @@ if there's a wall of base64 in the log (thread stacks) then please include that,
 
 for build instructions etc, see [./docs/devnotes.md](./docs/devnotes.md)
 
-specifically you may want to [build the sfx](https://github.com/9001/copyparty/blob/hovudstraum/docs/devnotes.md#just-the-sfx) or [build from scratch](https://github.com/9001/copyparty/blob/hovudstraum/docs/devnotes.md#build-from-scratch)
+specifically you may want to [build the sfx](https://github.com/9001/copyparty/blob/develop/docs/devnotes.md#just-the-sfx) or [build from scratch](https://github.com/9001/copyparty/blob/develop/docs/devnotes.md#build-from-scratch)
 
 see [./docs/TODO.md](./docs/TODO.md) for planned features / fixes / changes
 
