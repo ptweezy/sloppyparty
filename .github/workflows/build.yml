@@ -73,6 +73,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bzip2
           pip install jinja2
+          # make-sfx's `git describe` can't parse our sloppyparty-v* tags (it expects
+          # copyparty's vX.Y.Z); drop .git so it reads the version from __version__.py.
+          rm -rf .git
           bash scripts/make-sfx.sh fast dl-wd
           mv dist/copyparty-sfx.py dist/sloppyparty-sfx.py
           python dist/sloppyparty-sfx.py --version || true

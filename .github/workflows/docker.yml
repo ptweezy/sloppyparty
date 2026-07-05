@@ -67,12 +67,13 @@ jobs:
         run: |
           set -euo pipefail
           # On a release build (called with a version), pin the SFX to that version
-          # so the image contents match its tag. rm -rf .git forces make-sfx to read
-          # the patched __version__.py instead of an inherited upstream git tag.
+          # so the image contents match its tag.
           if [ -n "${{ inputs.version }}" ]; then
             bash packaging/ci/set-version.sh "${{ inputs.version }}"
-            rm -rf .git
           fi
+          # Always drop .git before make-sfx: its `git describe` can't parse our
+          # sloppyparty-v* tags, so it must read the version from __version__.py.
+          rm -rf .git
           sudo apt-get update && sudo apt-get install -y --no-install-recommends bzip2
           pip install jinja2
           bash scripts/make-sfx.sh fast dl-wd
