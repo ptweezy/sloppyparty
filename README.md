@@ -14,8 +14,6 @@ turn almost any device into a file server with resumable uploads/downloads using
 
 🎬 **videos:** [upload](https://a.ocv.me/pub/demo/pics-vids/up2k.webm) // [cli-upload](https://a.ocv.me/pub/demo/pics-vids/u2cli.webm) // [race-the-beam](https://a.ocv.me/pub/g/nerd-stuff/cpp/2024-0418-race-the-beam.webm) // 👉 **[feature-showcase](https://a.ocv.me/pub/demo/showcase-hq.webm)** ([youtube](https://www.youtube.com/watch?v=15_-hgsX2V0))
 
-built in Norway 🇳🇴 with contributions from [not-norway](https://github.com/9001/copyparty/graphs/contributors)
-
 
 ## readme toc
 
