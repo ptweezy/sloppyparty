@@ -28,7 +28,7 @@ window.baguetteBox = (function () {
             onChange: null,
             readDirRtl: false,
         },
-        overlay, slider, btnPrev, btnNext, btnHelp, btnAnim, btnRotL, btnRotR, btnSel, btnFull, btnZoom, btnVmode, btnReadDir, btnGoPage, btnClose,
+        overlay, slider, btnPrev, btnNext, btnHelp, btnAnim, btnRotL, btnRotR, btnSel, btnFull, btnZoom, btnVmode, btnVcode, btnReadDir, btnGoPage, btnClose,
         currentGallery = [],
         currentIndex = 0,
         isOverlayVisible = false,
@@ -39,10 +39,24 @@ window.baguetteBox = (function () {
         re_i = APPLE ?
             /^[^?]+\.(a?png|avif|bmp|gif|hei[cf]s?|jfif|jpe?g|jxl|svg|tiff?|webp)(\?|$)/i :
             /^[^?]+\.(a?png|avif|bmp|gif|jfif|jpe?g|jxl|svg|tiff?|webp)(\?|$)/i,
-        re_v = /^[^?]+\.(webm|mkv|mp4|m4v|mov)(\?|$)/i,
-        // containers browsers usually can't demux natively; start to transcode these upfront
-        // rather than waiting for a native-playback error that won't fire
-        re_vhls = /\.(mkv|avi|wmv|flv|ts|m2ts|mts|mpe?g|vob|ogm|rm|rmvb|divx|asf|3gp)(\?|$)/i,
+        // which files open as a <video>; when the server can transcode we also
+        // accept containers no browser can play, since HLS is the fallback
+        // (have_vcode comes from window.CGV via util.js, which loads before us)
+        re_v = window.have_vcode ?
+            /^[^?]+\.(webm|mkv|mp4|m4v|mov|avi|wmv|flv|ts|m2ts|mts|mpe?g|vob|ogm|rm|rmvb|divx|asf|3gp)(\?|$)/i :
+            /^[^?]+\.(webm|mkv|mp4|m4v|mov)(\?|$)/i,
+        // legacy containers no browser can demux natively; transcode these
+        // upfront instead of waiting for a native failure; modern/ambiguous
+        // containers (mkv, ts, mp4, mpg, 3gp, ...) are deliberately absent; we
+        // try those natively first and fall back only on an actual failure, so
+        // we never transcode something the browser could have played
+        re_vhls = /\.(avi|wmv|flv|vob|ogm|rm|rmvb|divx|asf)(\?|$)/i,
+        // containers we play natively but where chrome can fail to decode the
+        // video track silently (no 'error' event); for these, a loadedmetadata
+        // with videoWidth==0 means the codec is unsupported, so transcode;
+        // mp4/mov/webm/m4v are excluded since videoWidth==0 there is usually a
+        // legit audio-only file that plays fine as-is
+        re_vck = /\.(mkv|ts|m2ts|mts|mpe?g|3gp)(\?|$)/i,
         re_cbz = /^[^?]+\.(cbz)(\?|$)/i,
         anims = ['slideIn', 'fadeIn', 'none'],
         data = {},  // all galleries
@@ -53,6 +67,8 @@ window.baguetteBox = (function () {
         vmute = false,
         vloop = sread('vmode') == 'L',
         vnext = sread('vmode') == 'C',
+        // manual video-source override: a=auto, t=force transcode, n=force native
+        vsrc = sread('vsrc') || 'a',
         loopA = null,
         loopB = null,
         url_ts = null,
@@ -334,6 +350,7 @@ window.baguetteBox = (function () {
                 '<button id="bbox-full" type="button" tt="full-screen">⛶</button>' +
                 '<button id="bbzoom" type="button" tt="zoom/stretch">z</button>' +
                 '<button id="bbox-vmode" type="button" tt="a"></button>' +
+                '<button id="bbox-vcode" type="button" tt="a"></button>' +
                 '<button id="bbox-gopage" type="button" tt="go to page">pg</button>' +
                 '<button id="bbox-close" type="button" aria-label="Close">X</button>' +
                 '</div></div>'
@@ -354,6 +371,7 @@ window.baguetteBox = (function () {
         btnFull = ebi('bbox-full');
         btnZoom = ebi('bbzoom');
         btnVmode = ebi('bbox-vmode');
+        btnVcode = ebi('bbox-vcode');
         btnGoPage = ebi('bbox-gopage');
         btnClose = ebi('bbox-close');
 
@@ -562,6 +580,74 @@ window.baguetteBox = (function () {
             tt.show.call(this);
     }
 
+    // show/label the video-source button for the current item (video + a server
+    // that can transcode); the button is hidden otherwise
+    function setVsrc() {
+        var v = vid(),
+            show = v && window.have_vcode,
+            lbl = { a: 'auto', t: 'conv', n: 'orig' },
+            tts = {
+                a: 'video source: auto$N(native playback, transcode only if needed)',
+                t: 'video source: transcode$N(re-encode; use if audio/video is broken)',
+                n: 'video source: original$N(raw file; best quality, no transcode)'
+            };
+
+        btnVcode.style.display = show ? '' : 'none';
+        if (!show)
+            return;
+
+        btnVcode.textContent = lbl[vsrc];
+        btnVcode.setAttribute('tt', tts[vsrc]);
+        btnVcode.setAttribute('aria-label', tts[vsrc].split('$N')[0]);
+    }
+
+    function tglVsrc() {
+        vsrc = vsrc == 'a' ? 't' : vsrc == 't' ? 'n' : 'a';
+        swrite('vsrc', vsrc);
+        setVsrc();
+        applyVsrc(vid());
+        if (tt.en)
+            tt.show.call(this);
+    }
+
+    // (re)point the current <video> at whatever source vsrc dictates, keeping
+    // the playback position and play/pause state across the switch
+    function applyVsrc(v) {
+        if (!v || !window.have_vcode || !v.rawsrc)
+            return;
+
+        var raw = v.rawsrc,
+            want = vsrc == 't' ? 't' : vsrc == 'n' ? 'n' :
+                // 'auto': same decision as loadImage
+                (re_vhls.test(raw) || (re_vck.test(raw) && v.canPlayType('application/vnd.apple.mpegurl'))) ? 't' : 'n';
+
+        if (want == v.vsrc_now)
+            return;  // already on the desired source
+
+        var t = v.currentTime || 0,
+            playing = !v.paused && !v.ended,
+            restore = function () {
+                v.removeEventListener('loadedmetadata', restore);
+                try { if (t > 0.1 && isFinite(t)) v.currentTime = t; } catch (ex) { }
+                if (playing) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
+            };
+
+        if (v.hls_wd) { clearTimeout(v.hls_wd); v.hls_wd = 0; }
+        if (v.hls) { try { v.hls.destroy(); } catch (ex) { } v.hls = null; }
+        v.addEventListener('loadedmetadata', restore);
+
+        if (want == 't') {
+            v.hls_tried = 0;
+            load_hls(v, raw);  // sets vsrc_now='t'
+        }
+        else {
+            v.hls_tried = 1;  // forced native: don't auto-fall-back to transcode
+            v.vsrc_now = 'n';
+            v.setAttribute('src', addq(raw, 'cache'));
+            v.load();
+        }
+    }
+
     function findfile() {
         var thumb = currentGallery[currentIndex].imageElement,
             name = vsplit(thumb.href)[1].split('?')[0],
@@ -669,6 +755,7 @@ window.baguetteBox = (function () {
         bind(btnNext, 'click', showRightImage);
         bind(btnClose, 'click', hideOverlay);
         bind(btnVmode, 'click', tglVmode);
+        bind(btnVcode, 'click', tglVsrc);
         bind(btnHelp, 'click', halp);
         bind(btnAnim, 'click', anim);
         bind(btnReadDir, 'click', toggleReadDir);
@@ -694,6 +781,7 @@ window.baguetteBox = (function () {
         unbind(btnNext, 'click', showRightImage);
         unbind(btnClose, 'click', hideOverlay);
         unbind(btnVmode, 'click', tglVmode);
+        unbind(btnVcode, 'click', tglVsrc);
         unbind(btnHelp, 'click', halp);
         unbind(btnAnim, 'click', anim);
         unbind(btnReadDir, 'click', toggleReadDir);
@@ -880,6 +968,7 @@ window.baguetteBox = (function () {
             if (v == keep)
                 continue;
 
+            if (v.hls_wd) { clearTimeout(v.hls_wd); v.hls_wd = 0; }
             if (v.hls) {
                 try { v.hls.destroy(); } catch (ex) { }
                 v.hls = null;
@@ -937,7 +1026,9 @@ window.baguetteBox = (function () {
     // switch a <video> element from the (unplayable) source file to an
     // on-the-fly HLS transcode served at  <source>/.hls/index.m3u8
     function load_hls(image, raw_src) {
+        if (image.hls_wd) { clearTimeout(image.hls_wd); image.hls_wd = 0; }
         image.hls_tried = 1;
+        image.vsrc_now = 't';
 
         var u = raw_src, q = '', qi = u.indexOf('?');
         if (qi >= 0) { q = u.slice(qi); u = u.slice(0, qi); }
@@ -1052,6 +1143,18 @@ window.baguetteBox = (function () {
             if (!options.async && callback)
                 callback();
         });
+        if (is_vid)
+            bind(image, 'loadedmetadata', function () {
+                // the browser read the file, so cancel the never-loaded watchdog
+                if (this.hls_wd) { clearTimeout(this.hls_wd); this.hls_wd = 0; }
+                // container demuxed but no video track decoded -> unsupported
+                // codec; chrome fails here silently (no 'error' event, so lerr
+                // never fires), so kick off the transcode fallback ourselves
+                if (window.have_vcode && this.rawsrc && !this.hls_tried && !this.videoWidth && re_vck.test(this.rawsrc)) {
+                    console.log('bb-vcode: no decodable video track; switching to transcode');
+                    load_hls(this, this.rawsrc);
+                }
+            });
         if (!is_vid)
             image.setAttribute('src', imageSrc);
         else {
@@ -1064,10 +1167,31 @@ window.baguetteBox = (function () {
             // ios ignores poster
             image.onended = vidEnd;
             image.onplay = image.onpause = ppHandler;
-            if (window.have_vcode && re_vhls.test(rawSrc))
+            // manual override (vsrc) wins; in 'auto' we decide per container:
+            // re_vhls = no browser can demux these, always transcode; re_vck on
+            // safari/ios = those play HLS natively but can't demux mkv/ts/etc and
+            // won't reliably fire 'error', so transcode upfront rather than stall
+            if (window.have_vcode && (vsrc == 't' || (vsrc == 'a' && (re_vhls.test(rawSrc) ||
+                (re_vck.test(rawSrc) && image.canPlayType('application/vnd.apple.mpegurl'))))))
                 load_hls(image, rawSrc);
-            else
+            else {
+                image.vsrc_now = 'n';
+                if (vsrc == 'n')
+                    image.hls_tried = 1;  // forced native: user opted out of transcode
                 image.setAttribute('src', imageSrc);
+                // auto only: other browsers (chrome) content-sniff re_vck
+                // containers and may neither play nor 'error', they just sit at
+                // readyState 0; if metadata hasn't loaded within a few seconds,
+                // fall back to a transcode (loadedmetadata cancels this)
+                if (window.have_vcode && vsrc == 'a' && re_vck.test(rawSrc))
+                    image.hls_wd = setTimeout(function () {
+                        image.hls_wd = 0;
+                        if (image.hls_tried || image.readyState >= 1)
+                            return;
+                        console.log('bb-vcode: native playback never started; switching to transcode');
+                        load_hls(image, image.rawsrc);
+                    }, 4000);
+            }
         }
         image.alt = thumbnailElement ? thumbnailElement.alt || '' : '';
         if (options.titleTag && imageCaption)
@@ -1407,6 +1531,7 @@ window.baguetteBox = (function () {
         selbg();
         mp_ctl();
         setVmode();
+        setVsrc();
 
         var el = vidimg();
         if (el.getAttribute('rot'))
