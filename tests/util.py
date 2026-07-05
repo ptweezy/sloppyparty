@@ -160,13 +160,13 @@ class Cfg(Namespace):
         ex = "hash_mt hsortn qdel safe_dedup scan_pr_r scan_pr_s scan_st_r srch_time tail_fd tail_rate th_spec_p u2abort u2j u2sz unp_who"
         ka.update(**{k: 1 for k in ex.split()})
 
-        ex = "ac_convt au_vol dl_list du_iwho mcr mtab_age reg_cap s_thead s_tbody tail_tmax tail_who th_convt th_qv th_qvx ups_who ver_iwho vc_maxh vc_vq vc_aq vc_seg zip_who"
+        ex = "ac_convt au_vol dl_list du_iwho mcr mtab_age reg_cap s_thead s_tbody tail_tmax tail_who th_convt th_qv th_qvx ups_who ver_iwho vt_maxh vt_vq vt_aq vt_seg zip_who"
         ka.update(**{k: 9 for k in ex.split()})
 
         ex = "ctl_re db_act forget_ip gauto idp_cookie idp_store k304 loris md_nhist no304 nosubtle qr_pin qr_wait re_maxage rproxy rsp_jtr rsp_slp s_wr_slp snap_wri theme themes turbo u2ow zipmaxn zipmaxs"
         ka.update(**{k: 0 for k in ex.split()})
 
-        ex = "ah_alg bname chdir chmod_f chpw_db csp_dl csp_ui db_xattr doctitle df epilogues exit favico fika ipa ipar html_head html_head_d html_head_s idp_login idp_logout lg_sba lg_sbf log_date log_fk md_sba md_sbf name og_desc og_site og_th og_title og_title_a og_title_v og_title_i opds_exts preadmes prologues readmes shr shr1 shr_site site smsg tcolor textfiles th_pregen txt_eol ufavico ufavico_h unlist up_site vc_preset vc_url vname xff_src zipmaxt R RS SR"
+        ex = "ah_alg bname chdir chmod_f chpw_db csp_dl csp_ui db_xattr doctitle df epilogues exit favico fika ipa ipar html_head html_head_d html_head_s idp_login idp_logout lg_sba lg_sbf log_date log_fk md_sba md_sbf name og_desc og_site og_th og_title og_title_a og_title_v og_title_i opds_exts preadmes prologues readmes shr shr1 shr_site site smsg tcolor textfiles th_pregen txt_eol ufavico ufavico_h unlist up_site vt_preset vt_enc vt_tonemap vc_url vname xff_src zipmaxt R RS SR"
         ka.update(**{k: "" for k in ex.split()})
 
         ex = "apnd_who ban_403 ban_404 ban_422 ban_pw ban_pwc ban_url dont_ban cachectl http_vary rcm rss_fmt_d rss_fmt_t spinner"

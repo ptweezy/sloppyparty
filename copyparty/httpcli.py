@@ -175,7 +175,9 @@ IDX_HTML = set(["index.htm", "index.html"])
 # on-the-fly HLS video transcoding; matches and validates the request:
 #   <source-file>/.hls/index.m3u8   -> the playlist
 #   <source-file>/.hls/vNNNNN.ts    -> a segment  (strict name = traversal-safe)
-RE_HLS = re.compile(r"^(.+)/\.hls/(index\.m3u8|v[0-9]{5}\.ts)$")
+RE_HLS = re.compile(
+    r"^(.+)/\.hls/(master\.m3u8|[0-9]{3,4}/index\.m3u8|[0-9]{3,4}/v[0-9]{5}\.ts)$"
+)
 
 A_FILE = os.stat_result(
     (0o644, -1, -1, 1, 1000, 1000, 8, 0x39230101, 0x39230101, 0x39230101)
@@ -6808,20 +6810,60 @@ class HttpCli(object):
         mtime = int(st.st_mtime)
         cachedir = hls_path(histpath, vrem, mtime)
 
-        if res == "index.m3u8":
-            return self._tx_hls_playlist(ptop, vrem, mtime, cachedir)
+        if res == "master.m3u8":
+            return self._tx_hls_master(ptop, vrem, mtime, cachedir)
 
-        # res is "vNNNNN.ts" (validated by RE_HLS)
-        return self._tx_hls_segment(ptop, vrem, mtime, int(res[1:6]), cachedir, res)
+        # res is "<height>/index.m3u8" or "<height>/vNNNNN.ts" (per RE_HLS)
+        hs, fn = res.split("/", 1)
+        height = int(hs)
+        rdir = os.path.join(cachedir, hs)
+        if fn == "index.m3u8":
+            return self._tx_hls_playlist(ptop, vrem, mtime, rdir, height)
 
-    def _tx_hls_playlist(
+        return self._tx_hls_segment(ptop, vrem, mtime, int(fn[1:6]), rdir, fn, height)
+
+    def _tx_hls_master(
         self, ptop: str, vrem: str, mtime: int, cachedir: str
     ) -> bool:
-        if not self.conn.hsrv.broker.ask("hlssrv.ensure", ptop, vrem, mtime, -1).get():
+        if not self.conn.hsrv.broker.ask(
+            "hlssrv.ensure", ptop, vrem, mtime, -1, 0
+        ).get():
             raise Pebkac(500, "video transcode unavailable")
 
-        # the playlist is a complete VOD manifest; wait for it to appear
-        plpath = os.path.join(cachedir, "index.m3u8")
+        # the master lists one variant playlist per rendition; it is written
+        # atomically. its mere existence means it is complete
+        plpath = os.path.join(cachedir, "master.m3u8")
+        deadline = time.time() + 30
+        buf = b""
+        while True:
+            try:
+                if bos.path.getsize(plpath):
+                    with open(plpath, "rb") as f:
+                        buf = f.read()
+            except:
+                buf = b""
+
+            if buf:
+                break
+
+            if time.time() > deadline:
+                raise Pebkac(504, "video transcode did not produce a playlist in time")
+
+            time.sleep(0.2)
+
+        self.conn.hsrv.broker.say("hlssrv.poke", cachedir)
+        return self._tx_m3u8(buf)
+
+    def _tx_hls_playlist(
+        self, ptop: str, vrem: str, mtime: int, rdir: str, height: int
+    ) -> bool:
+        if not self.conn.hsrv.broker.ask(
+            "hlssrv.ensure", ptop, vrem, mtime, -1, height
+        ).get():
+            raise Pebkac(500, "video transcode unavailable")
+
+        # a rendition playlist is a complete VOD manifest; wait for it to appear
+        plpath = os.path.join(rdir, "index.m3u8")
         deadline = time.time() + 30
         buf = b""
         while True:
@@ -6840,9 +6882,12 @@ class HttpCli(object):
 
             time.sleep(0.2)
 
-        self.conn.hsrv.broker.say("hlssrv.poke", cachedir)
+        self.conn.hsrv.broker.say("hlssrv.poke", rdir)
+        return self._tx_m3u8(buf)
 
-        # relative segment URIs would drop the query, so re-attach the filekey
+    def _tx_m3u8(self, buf: bytes) -> bool:
+        # relative child URIs (variant playlists / segments) would drop the
+        # query, so re-attach the filekey to each
         kq = self.uparam.get("k")
         if kq:
             q = ("?k=" + kq).encode("utf-8")
@@ -6858,12 +6903,12 @@ class HttpCli(object):
         return True
 
     def _tx_hls_segment(
-        self, ptop: str, vrem: str, mtime: int, idx: int, cachedir: str, res: str
+        self, ptop: str, vrem: str, mtime: int, idx: int, rdir: str, res: str, height: int
     ) -> bool:
         # transcoded on demand the first time it is requested (incl. on seek)
-        self.conn.hsrv.broker.ask("hlssrv.ensure", ptop, vrem, mtime, idx).get()
+        self.conn.hsrv.broker.ask("hlssrv.ensure", ptop, vrem, mtime, idx, height).get()
 
-        segpath = os.path.join(cachedir, res)
+        segpath = os.path.join(rdir, res)
         deadline = time.time() + 45
         while True:
             try:
@@ -6877,7 +6922,7 @@ class HttpCli(object):
 
             time.sleep(0.2)
 
-        self.conn.hsrv.broker.say("hlssrv.poke", cachedir)
+        self.conn.hsrv.broker.say("hlssrv.poke", rdir)
         return self.tx_file("oh_f", segpath)
 
     def tx_browser(self) -> bool:

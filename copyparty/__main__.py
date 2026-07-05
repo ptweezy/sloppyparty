@@ -1829,13 +1829,15 @@ def add_transcoding(ap):
     ap2.add_argument("--no-bacode", action="store_true", help="disable batch audio transcoding by folder download (zip/tar)")
     ap2.add_argument("--ac-maxage", metavar="SEC", type=int, default=86400, help="delete cached transcode output after \033[33mSEC\033[0m seconds")
     ap2.add_argument("--no-vcode", action="store_true", help="disable on-the-fly video transcoding (HLS); videos which the browser cannot play natively will not be transcoded")
-    ap2.add_argument("--vc-maxh", metavar="PX", type=int, default=720, help="downscale transcoded video to at most this height (\033[32m0\033[0m = keep source resolution); (volflag=vc_maxh)")
-    ap2.add_argument("--vc-vq", metavar="CRF", type=int, default=23, help="h264 quality for video transcoding; lower is better (\033[32m18\033[0m=high, \033[32m28\033[0m=small); (volflag=vc_vq)")
-    ap2.add_argument("--vc-preset", metavar="P", type=u, default="veryfast", help="x264 speed/efficiency preset (\033[32multrafast\033[0m ... \033[32mveryslow\033[0m); faster = more CPU-friendly but larger; (volflag=vc_preset)")
-    ap2.add_argument("--vc-aq", metavar="KBPS", type=int, default=128, help="audio bitrate for video transcoding; (volflag=vc_aq)")
-    ap2.add_argument("--vc-seg", metavar="SEC", type=float, default=4, help="target HLS segment duration in seconds; (volflag=vc_seg)")
-    ap2.add_argument("--vc-maxage", metavar="SEC", type=int, default=86400, help="delete cached video-transcode output after \033[33mSEC\033[0m seconds")
-    ap2.add_argument("--vc-jobs", metavar="N", type=int, default=2, help="max number of concurrent video transcodes; raise/lower to match cpu")
+    ap2.add_argument("--vt-maxh", metavar="PX", type=int, default=720, help="downscale transcoded video to at most this height (\033[32m0\033[0m = keep source resolution) (volflag=vt_maxh)")
+    ap2.add_argument("--vt-vq", metavar="CRF", type=int, default=23, help="h264 quality for video transcoding; lower is better (\033[32m18\033[0m=high, \033[32m28\033[0m=small) (volflag=vt_vq)")
+    ap2.add_argument("--vt-preset", metavar="P", type=u, default="veryfast", help="x264 speed/efficiency preset (\033[32multrafast\033[0m ... \033[32mveryslow\033[0m); faster = more cpu-friendly but larger (volflag=vt_preset)")
+    ap2.add_argument("--vt-enc", metavar="E", type=u, default="auto", help="video encoder for transcoding; \033[32mauto\033[0m = software libx264 up to 1440p (best quality) and a hardware encoder for 4K (to sustain realtime). force one of \033[32mx264 vt nvenc qsv amf\033[0m (\033[33mvt\033[0m=videotoolbox/macos, \033[33mnvenc\033[0m=nvidia, \033[33mqsv\033[0m=intel, \033[33mamf\033[0m=amd); hardware is faster/lower-power but usually lower quality-per-bitrate than x264 (volflag=vt_enc)")
+    ap2.add_argument("--vt-tonemap", metavar="T", type=u, default="auto", help="tonemap HDR video to SDR when transcoding; \033[32mauto\033[0m = on when ffmpeg has a working tonemap filter (libplacebo/opencl/zimg), \033[32moff\033[0m to passthrough (HDR sources then look washed-out) (volflag=vt_tonemap)")
+    ap2.add_argument("--vt-aq", metavar="KBPS", type=int, default=128, help="audio bitrate for video transcoding (volflag=vt_aq)")
+    ap2.add_argument("--vt-seg", metavar="SEC", type=float, default=4, help="target HLS segment duration in seconds (volflag=vt_seg)")
+    ap2.add_argument("--vt-maxage", metavar="SEC", type=int, default=86400, help="delete cached video-transcode output after \033[33mSEC\033[0m seconds")
+    ap2.add_argument("--vt-jobs", metavar="N", type=int, default=2, help="max number of concurrent video transcodes; raise/lower to match cpu")
 
 
 def add_tail(ap):
