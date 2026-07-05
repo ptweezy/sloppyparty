@@ -120,6 +120,10 @@ jobs:
   # copyparty is pure-Python, so the container only compiles the PyInstaller
   # bootloader from sdist on the exotic arches -- build-essential covers that.
   binaries-glibc-extra:
+    # Exotic arches (QEMU-emulated) are opt-in: they're slow and fragile, so the
+    # per-commit gate covers only the core arches (amd64/arm64/macOS/Windows).
+    # Run the full matrix via workflow_dispatch or by setting FULL_BINARY_MATRIX=true.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.FULL_BINARY_MATRIX == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -158,6 +162,9 @@ jobs:
   # musl/Alpine binaries. GitHub runners are glibc, so the build runs inside an
   # Alpine container via `docker run` (checkout/upload stay on the glibc host).
   binaries-musl:
+    # Opt-in like binaries-glibc-extra: musl builds run in a container (and most
+    # arches under QEMU), so they're excluded from the fast per-commit gate.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.FULL_BINARY_MATRIX == 'true' }}
     strategy:
       fail-fast: false
       matrix:
