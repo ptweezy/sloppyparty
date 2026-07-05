@@ -1,0 +1,47 @@
+# Dependabot keeps the CI/CD supply chain current: it opens PRs to bump the pinned
+# versions in .github/workflows and the Dockerfiles as new releases land, so the
+# exact pins don't silently rot into known-vulnerable versions.
+#
+# SECURITY updates (a PR the moment a dependency has a published advisory) are
+# switched on in the repo UI, not here: Settings -> Code security -> enable
+# "Dependabot alerts" AND "Dependabot security updates". They reuse the ecosystems
+# declared below, so keep this in sync with what the pipeline actually uses.
+#
+# Updates are grouped per ecosystem so a quiet week brings at most one PR per
+# ecosystem to review.
+version: 2
+updates:
+  # The GitHub Actions pinned in .github/workflows/*.yml. They are exact-pinned
+  # (e.g. actions/checkout@v7.0.0), which is what lets Dependabot see each one as
+  # outdated and open a reviewable bump (a moving @v7 tag would hide drift).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Python packaging metadata (pyproject.toml optional-dependency groups).
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      python:
+        patterns: ["*"]
+
+  # Base images in copyparty's container Dockerfiles (the published variant matrix
+  # min/ac/iv/dj/im). Base-image bumps can change behavior, so review rather than
+  # automerge.
+  - package-ecosystem: docker
+    directories:
+      - "/scripts/docker"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      docker:
+        patterns: ["*"]
