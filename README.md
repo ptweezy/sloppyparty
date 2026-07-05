@@ -161,7 +161,76 @@ turn almost any device into a file server with resumable uploads/downloads using
 
 ## quickstart
 
-just run **[copyparty-sfx.py](https://github.com/9001/copyparty/releases/latest/download/copyparty-sfx.py)** -- that's it! 🎉
+### 📥 download & install
+
+sloppyparty ships in several ways — pick whichever suits you. Everything below is built and published **automatically on every release** by the [CI/CD pipeline](./packaging/README.md), and every asset is listed in the release's `SHA256SUMS` for verification.
+
+**🐹 native binary** — a single self-contained executable, *no Python required*. Grab your OS/arch from the [latest release](https://github.com/ptweezy/sloppyparty/releases/latest):
+
+| OS | download |
+| -- | -------- |
+| Linux x86-64 | [`sloppyparty-linux-amd64`](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-linux-amd64) |
+| Linux arm64 | [`sloppyparty-linux-arm64`](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-linux-arm64) |
+| macOS Apple Silicon | [`sloppyparty-macos-arm64`](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-macos-arm64) |
+| macOS Intel | [`sloppyparty-macos-amd64`](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-macos-amd64) |
+| Windows x86-64 | [`sloppyparty-windows-amd64.exe`](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-windows-amd64.exe) |
+| Windows arm64 | [`sloppyparty-windows-arm64.exe`](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-windows-arm64.exe) |
+
+```bash
+chmod +x sloppyparty-linux-amd64
+./sloppyparty-linux-amd64
+# macOS (unsigned build): first clear the quarantine flag ->
+#   xattr -d com.apple.quarantine sloppyparty-macos-arm64
+```
+
+> more exotic Linux arches (i686, armv7, armv6, ppc64le, s390x, riscv64, and musl/Alpine builds) can be produced on demand — see [packaging/README.md](./packaging/README.md).
+
+**🍺 Homebrew** (macOS / Linux) — installs the native binary, auto-updates on `brew upgrade`:
+
+```bash
+brew install ptweezy/tap/sloppyparty
+sloppyparty
+```
+
+**🐋 Docker / GHCR** — all optional dependencies baked in:
+
+```bash
+docker run --rm -it -u 1000 -p 3923:3923 -v /mnt/nas:/w -v "$PWD/cfg:/cfg" ghcr.io/ptweezy/sloppyparty
+```
+
+then open <http://localhost:3923>. `/w` is the folder to share, `/cfg` holds optional `*.conf` files. Image variants:
+
+| tag | flavor |
+| --- | ------ |
+| `ghcr.io/ptweezy/sloppyparty` (aka `:latest`) | full — ffmpeg audio/video thumbnails + transcoding |
+| `:latest-min` | tiny, no media features |
+| `:latest-iv` | ffmpeg + libvips thumbnails |
+| `:latest-im` | imagemagick thumbnails |
+
+pin an exact version with `:1.0.2` (etc.).
+
+**🎉 self-contained Python script** (the "SFX") — runs on *any* Python 2 or 3, all deps optional:
+
+```bash
+curl -LO https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-sfx.py
+python3 sloppyparty-sfx.py
+```
+
+**🐍 pip / wheel** — download the wheel from the [latest release](https://github.com/ptweezy/sloppyparty/releases/latest) and install it (gives you both the `sloppyparty` and `copyparty` commands):
+
+```bash
+pip install ./sloppyparty-*.whl
+```
+
+> `pip install sloppyparty` straight from PyPI is wired up but **off by default** (publishing a fork under that name is opt-in) — enable it per [packaging/README.md](./packaging/README.md#secrets--variables-to-configure).
+
+> 🎨 to make the whole web UI say **sloppyparty** (title, corner name, favicon, no "powered by copyparty" footer), start it with the bundled branding config: `sloppyparty -c sloppyparty.conf` — see [sloppyparty.conf](./sloppyparty.conf).
+
+---
+
+the rest of this quickstart (optional dependencies, config, examples) applies to every install method above.
+
+just run **[sloppyparty-sfx.py](https://github.com/ptweezy/sloppyparty/releases/latest/download/sloppyparty-sfx.py)** -- that's it! 🎉
 
 > ℹ️ the sfx is a [self-extractor](https://github.com/9001/copyparty/issues/270) which unpacks an embedded `tar.gz` into `$TEMP` -- if this looks too scary, you can use the [zipapp](#zipapp) which has slightly worse performance
 
