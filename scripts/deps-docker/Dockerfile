@@ -7,7 +7,7 @@ ENV     ver_hashwasm=4.12.0 \
         ver_codemirror=5.65.18 \
         ver_fontawesome=5.13.0 \
         ver_prism=1.30.0 \
-        ver_hlsjs=1.5.20 \
+        ver_hlsjs=1.6.16 \
         ver_zopfli=1.0.3
 
 # versioncheck:
