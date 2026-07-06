@@ -1069,6 +1069,7 @@ window.baguetteBox = (function () {
         if (window.have_vcode && this.tagName == 'VIDEO' && this.rawsrc && !this.hls_tried) {
             console.log('bb-vcode: native playback failed; switching to transcode');
             load_hls(this, this.rawsrc);
+            note_forced_conv(this);
             return;
         }
 
@@ -1093,9 +1094,9 @@ window.baguetteBox = (function () {
             toast.err(20, this.ded, 'bb-ded');
     }
 
-    // switch v to the transcode source while keeping the playback position and
-    // play/pause state (load_hls alone would restart from 0)
-    function conv_keep_pos(v) {
+    // re-point v at a new source (chosen by setsrc) while preserving the
+    // playback position and play/pause state (a raw load would restart from 0)
+    function reload_keep_pos(v, setsrc) {
         var t = v.currentTime || 0,
             playing = !v.paused && !v.ended,
             restore = function () {
@@ -1104,7 +1105,42 @@ window.baguetteBox = (function () {
                 if (playing) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
             };
         v.addEventListener('loadedmetadata', restore);
-        load_hls(v, v.rawsrc);
+        setsrc();
+    }
+
+    // switch v to the on-the-fly transcode ('conv')
+    function conv_keep_pos(v) {
+        reload_keep_pos(v, function () { load_hls(v, v.rawsrc); });
+    }
+
+    // switch v back to the raw file ('orig'); hls_tried stays set so we don't
+    // immediately auto-bounce back to a transcode
+    function native_keep_pos(v) {
+        reload_keep_pos(v, function () {
+            if (v.hls_wd) { clearTimeout(v.hls_wd); v.hls_wd = 0; }
+            if (v.hls) { try { v.hls.destroy(); } catch (ex) { } v.hls = null; }
+            v.hls_tried = 1;
+            v.vsrc_now = 'n';
+            v.setAttribute('src', addq(v.rawsrc, 'cache'));
+            v.load();
+        });
+    }
+
+    // we auto-switched a video that can't play natively over to the transcode;
+    // surface it as a short, cancellable notice instead of doing it silently
+    function note_forced_conv(v) {
+        if (!v || v !== vid())
+            return;
+
+        toast.inf(9, 'this file can\'t play natively in your browser &mdash; switched to conv. <a href="#" id="bb-keeporig">keep original</a>', 'bb-fconv');
+        var a = ebi('bb-keeporig');
+        if (a)
+            a.onclick = function (e) {
+                ev(e);
+                toast.hide();
+                if (vid() === v && v.rawsrc)
+                    native_keep_pos(v);
+            };
     }
 
     // some containers (usually mkv) carry an audio codec the browser can't
@@ -1207,6 +1243,7 @@ window.baguetteBox = (function () {
                 if (window.have_vcode && this.rawsrc && !this.hls_tried && !this.videoWidth && re_vck.test(this.rawsrc)) {
                     console.log('bb-vcode: no decodable video track; switching to transcode');
                     load_hls(this, this.rawsrc);
+                    note_forced_conv(this);
                 }
             });
         if (!is_vid)
@@ -1233,9 +1270,15 @@ window.baguetteBox = (function () {
             // re_vhls = no browser can demux these, always transcode; re_vck on
             // safari/ios = those play HLS natively but can't demux mkv/ts/etc and
             // won't reliably fire 'error', so transcode upfront rather than stall
-            if (window.have_vcode && (vsrc == 't' || (vsrc == 'a' && (re_vhls.test(rawSrc) ||
-                (re_vck.test(rawSrc) && image.canPlayType('application/vnd.apple.mpegurl'))))))
+            var auto_conv = vsrc == 'a' && (re_vhls.test(rawSrc) ||
+                (re_vck.test(rawSrc) && image.canPlayType('application/vnd.apple.mpegurl')));
+            if (window.have_vcode && (vsrc == 't' || auto_conv)) {
                 load_hls(image, rawSrc);
+                // auto (not a manual 'conv' choice): flag it so we can tell the
+                // user we overrode native playback, once it's in the DOM (below)
+                if (auto_conv)
+                    image.forced_conv = 1;
+            }
             else {
                 image.vsrc_now = 'n';
                 if (vsrc == 'n')
@@ -1252,6 +1295,7 @@ window.baguetteBox = (function () {
                             return;
                         console.log('bb-vcode: native playback never started; switching to transcode');
                         load_hls(image, image.rawsrc);
+                        note_forced_conv(image);
                     }, 4000);
             }
         }
@@ -1260,6 +1304,11 @@ window.baguetteBox = (function () {
             image.title = imageCaption;
 
         figure.appendChild(image);
+
+        // the upfront auto-transcode (above) ran before the <video> was in the
+        // DOM; now that it's attached, surface the cancellable "keep original"
+        if (image.forced_conv)
+            note_forced_conv(image);
 
         if (is_vid && window.afilt)
             afilt.apply(undefined, image);
