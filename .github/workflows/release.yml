@@ -107,7 +107,8 @@ jobs:
           OVERRIDE: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
-          git fetch --tags --force
+          source packaging/ci/retry.sh
+          retry git fetch --tags --force
           if [ -n "${OVERRIDE:-}" ]; then
             new="$OVERRIDE"
             printf '%s' "$new" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
@@ -191,11 +192,13 @@ jobs:
       - name: Build SFX
         run: |
           set -euo pipefail
+          source packaging/ci/retry.sh
           bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
           rm -rf .git
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends bzip2
+          retry sudo apt-get update
+          retry sudo apt-get install -y --no-install-recommends bzip2
           pip install jinja2
-          bash scripts/make-sfx.sh fast dl-wd
+          retry bash scripts/make-sfx.sh fast dl-wd
           mv dist/copyparty-sfx.py dist/sloppyparty-sfx.py
       - uses: actions/upload-artifact@v7.0.1
         with:
@@ -273,6 +276,7 @@ jobs:
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
+          source packaging/ci/retry.sh
           if [ -z "${MACOS_CERT_P12_BASE64:-}" ]; then
             echo "::warning::macOS signing secrets not set; shipping an unsigned binary."; exit 0
           fi
@@ -288,7 +292,9 @@ jobs:
           codesign --verify --strict --verbose=2 dist/sloppyparty
           echo "$MACOS_NOTARY_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
           ditto -c -k dist/sloppyparty "$RUNNER_TEMP/sloppyparty.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/sloppyparty.zip" --key "$RUNNER_TEMP/AuthKey.p8" \
+          # Apple's notary service is a common source of transient network/5xx
+          # failures; retry the whole submit+wait rather than failing the build.
+          retry xcrun notarytool submit "$RUNNER_TEMP/sloppyparty.zip" --key "$RUNNER_TEMP/AuthKey.p8" \
             --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
       - name: Rename binary
         run: mv dist/sloppyparty "dist/sloppyparty-macos-${{ matrix.arch }}"
@@ -363,10 +369,11 @@ jobs:
       - name: Build binary (${{ matrix.libc }})
         run: |
           set -euo pipefail
+          source packaging/ci/retry.sh
           bash packaging/ci/set-version.sh "${{ needs.version.outputs.new }}"
           out="sloppyparty-linux-${{ matrix.arch }}"
           if [ "${{ matrix.libc }}" = musl ]; then
-            docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} sh -euc '
+            retry docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} sh -euc '
               apk add --no-cache build-base libffi-dev zlib-dev curl
               pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
               pip install ".[ftpd,tftpd,audiotags]"
@@ -376,7 +383,7 @@ jobs:
               mv dist/sloppyparty dist/'"$out"'
             '
           else
-            docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euc '
+            retry docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euc '
               apt-get update && apt-get install -y --no-install-recommends build-essential zlib1g-dev curl
               pip install "pyinstaller=='"${PYINSTALLER_VER}"'"
               pip install ".[ftpd,tftpd,audiotags]"
@@ -419,10 +426,14 @@ jobs:
           fetch-depth: 0
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v8.0.1
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          path: artifacts
-          merge-multiple: true
+          action: actions/download-artifact@v8.0.1
+          attempt_limit: 3
+          attempt_delay: 10000
+          with: |
+            path: artifacts
+            merge-multiple: true
 
       - name: Collect release assets
         run: |
@@ -443,28 +454,37 @@ jobs:
       # ptweezy/sloppyparty on PyPI (and claim the name) to turn it on.
       - name: Publish to PyPI (Trusted Publishing)
         if: ${{ vars.PUBLISH_PYPI == 'true' }}
-        uses: pypa/gh-action-pypi-publish@v1.14.0
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          packages-dir: wheels   # wheels-only (twine rejects non-distribution files)
-          verify-metadata: false
+          action: pypa/gh-action-pypi-publish@v1.14.0
+          attempt_limit: 3
+          attempt_delay: 10000
+          with: |
+            packages-dir: wheels   # wheels-only (twine rejects non-distribution files)
+            verify-metadata: false
 
       - name: Tag the release
         env:
           NEW: ${{ needs.version.outputs.new }}
         run: |
           set -euo pipefail
+          source packaging/ci/retry.sh
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "sloppyparty-v$NEW" -m "sloppyparty v$NEW"
-          git push origin "refs/tags/sloppyparty-v$NEW"
+          retry git push origin "refs/tags/sloppyparty-v$NEW"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3.0.1
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          tag_name: sloppyparty-v${{ needs.version.outputs.new }}
-          name: sloppyparty v${{ needs.version.outputs.new }}
-          generate_release_notes: true   # auto "What's Changed" since the previous tag
-          files: out/*
+          action: softprops/action-gh-release@v3.0.1
+          attempt_limit: 3
+          attempt_delay: 10000
+          with: |
+            tag_name: sloppyparty-v${{ needs.version.outputs.new }}
+            name: sloppyparty v${{ needs.version.outputs.new }}
+            generate_release_notes: true   # auto "What's Changed" since the previous tag
+            files: out/*
 
   # Build + push the GHCR image variants at the released version.
   docker:
