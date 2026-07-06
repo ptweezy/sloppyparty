@@ -109,6 +109,8 @@ CFG_DEF = [os.environ.get("PRTY_CONFIG", "")]
 if not CFG_DEF[0]:
     CFG_DEF.pop()
 
+FULL_HELP = os.environ.get("PRTY_FULL_HELP", "")
+
 
 class RiceFormatter(argparse.HelpFormatter):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -1354,9 +1356,9 @@ def add_network(ap):
     ap2.add_argument("--cachectl", metavar="TXT", default="no-cache", help="default-value of the 'Cache-Control' response-header (controls caching in webbrowsers). Default prevents repeated downloading of the same file unless necessary (browser will ask copyparty if the file has changed). Examples: [\033[32mmax-age=604869\033[0m] will cache for 7 days, [\033[32mno-store, max-age=0\033[0m] will always redownload. (volflag=cachectl)")
     ap2.add_argument("--http-vary", metavar="TXT", type=u, default="Origin, PW, Cookie", help="value of the 'Vary' response-header; a hint for caching proxies")
     ap2.add_argument("--http-no-tcp", action="store_true", help="do not listen on TCP/IP for http/https; only listen on unix-domain-sockets")
-    if ANYWIN:
-        ap2.add_argument("--reuseaddr", action="store_true", help="set reuseaddr on listening sockets on windows; allows rapid restart of copyparty at the expense of being able to accidentally start multiple instances")
-    elif not MACOS:
+    if FULL_HELP or ANYWIN:
+        ap2.add_argument("--reuseaddr", action="store_true", help="set reuseaddr on listening sockets (windows-only); allows rapid restart of copyparty at the expense of being able to accidentally start multiple instances")
+    if FULL_HELP or (not ANYWIN and not MACOS):
         ap2.add_argument("--freebind", action="store_true", help="allow listening on IPs which do not yet exist, for example if the network interfaces haven't finished going up. Only makes sense for IPs other than '0.0.0.0', '127.0.0.1', '::', and '::1'. May require running as root (unless net.ipv6.ip_nonlocal_bind)")
     ap2.add_argument("--wr-h-eps", metavar="PATH", type=u, default="", help="write list of listening-on ip:port to textfile at \033[33mPATH\033[0m when http-servers have started")
     ap2.add_argument("--wr-h-aon", metavar="PATH", type=u, default="", help="write list of accessible-on ip:port to textfile at \033[33mPATH\033[0m when http-servers have started")
@@ -1709,7 +1711,7 @@ def add_safety(ap):
     ap2.add_argument("--loris", metavar="B", type=int, default=60, help="if a client maxes out the server connection limit without sending headers, ban it for \033[33mB\033[0m minutes; disable with [\033[32m0\033[0m]")
     ap2.add_argument("--acao", metavar="V[,V]", type=u, default="*", help="Access-Control-Allow-Origin; list of origins (domains/IPs without port) to accept requests from; [\033[32mhttps://1.2.3.4\033[0m]. Default [\033[32m*\033[0m] allows requests from all sites but removes cookies and http-auth; only ?pw=hunter2 survives")
     ap2.add_argument("--acam", metavar="V[,V]", type=u, default="GET,HEAD", help="Access-Control-Allow-Methods; list of methods to accept from offsite ('*' behaves like \033[33m--acao\033[0m's description)")
-    if not ANYWIN and not UNIX:
+    if FULL_HELP or (not ANYWIN and not UNIX):
         ap2.add_argument("--th-bwrap", metavar="CMD", type=u, default=th_bwrap, help="optional bwrap sandbox command for FFmpeg and dcraw (Linux-only)")
         ap2.add_argument("--use-bwrap", metavar="C", type=u, default="a", help="a/n/f; [\033[32ma\033[0m]=auto (yes if the program 'bwrap' exists (assumes it works)), [\033[32mn\033[0m]=no (assumes bwrap is broken), [\033[32mf\033[0m]=force (disables FFmpeg if bwrap unavailable)")
     else:
@@ -2026,16 +2028,16 @@ def add_debug(ap):
     ap2.add_argument("--vc", action="store_true", help="verbose config file parser (explain config)")
     ap2.add_argument("--cgen", action="store_true", help="generate config file from current config (best-effort; probably buggy)")
     ap2.add_argument("--deps", action="store_true", help="list information about detected optional dependencies")
-    if hasattr(select, "poll"):
+    if FULL_HELP or hasattr(select, "poll"):
         ap2.add_argument("--no-poll", action="store_true", help="kernel-bug workaround: disable poll; use select instead (limits max num clients to ~700)")
     ap2.add_argument("--no-sendfile", action="store_true", help="kernel-bug workaround: disable sendfile; do a safe and slow read-send-loop instead")
     ap2.add_argument("--no-scandir", action="store_true", help="kernel-bug workaround: disable scandir; do a listdir + stat on each file instead")
     ap2.add_argument("--no-fastboot", action="store_true", help="wait for initial filesystem indexing before accepting client requests")
     ap2.add_argument("--no-htp", action="store_true", help="disable httpserver threadpool, create threads as-needed instead")
-    if ANYWIN or sys.version_info < (3, 7):
-        ap2.add_argument("--sig-thr", action="store_true", default=True, help=argparse.SUPPRESS)
-    else:
+    if sys.version_info > (3, 7) and not ANYWIN:
         ap2.add_argument("--sig-thr", action="store_true", help="start separate thread for OS-signals (try this if CTRL-C is busted)")
+    else:
+        ap2.add_argument("--sig-thr", action="store_true", default=True, help=argparse.SUPPRESS)
     ap2.add_argument("--rm-sck", action="store_true", help="when listening on unix-sockets, do a basic delete+bind instead of the default atomic bind")
     ap2.add_argument("--srch-dbg", action="store_true", help="explain search processing, and do some extra expensive sanity checks")
     ap2.add_argument("--rclone-mdns", action="store_true", help="use mdns-domain instead of server-ip on /?hc")
