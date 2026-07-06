@@ -536,4 +536,4 @@ jobs:
             echo "Formula already current for ${VERSION}."; exit 0
           fi
           git commit -m "sloppyparty ${VERSION}"
-          git push
+          retry git push
