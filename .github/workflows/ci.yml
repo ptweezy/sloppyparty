@@ -81,16 +81,16 @@ jobs:
 
       # Publish coverage to Codecov (informational: the workflow's own pass/fail is
       # the gate). Each Linux cell uploads under its own flag; Codecov merges them.
+      # NOTE: NOT wrapped in Wandalen/wretry.action -- codecov-action is a
+      # composite action, and that wrapper can only retry node/docker actions
+      # ("Runner \"composite\" does not implemented"), confirmed by a real CI
+      # failure on this branch. fail_ci_if_error below already makes this
+      # step non-blocking, which is the retry-worthy property we actually need.
       - name: Upload coverage to Codecov
         if: ${{ matrix.os == 'ubuntu-latest' && !cancelled() }}
-        continue-on-error: true   # informational only, same as fail_ci_if_error below
-        uses: Wandalen/wretry.action@v3.8.0
+        uses: codecov/codecov-action@v7.0.0
         with:
-          action: codecov/codecov-action@v7.0.0
-          attempt_limit: 3
-          attempt_delay: 10000
-          with: |
-            token: ${{ secrets.CODECOV_TOKEN }}
-            files: ./coverage.xml
-            flags: ${{ matrix.os }}-py${{ matrix.python }}
-            fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: ${{ matrix.os }}-py${{ matrix.python }}
+          fail_ci_if_error: false

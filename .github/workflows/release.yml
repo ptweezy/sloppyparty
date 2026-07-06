@@ -452,16 +452,17 @@ jobs:
       # Publish wheel + sdist to PyPI via Trusted Publishing. DISABLED by default:
       # set repo variable PUBLISH_PYPI=true AND configure a trusted publisher for
       # ptweezy/sloppyparty on PyPI (and claim the name) to turn it on.
+      # NOTE: NOT wrapped in Wandalen/wretry.action -- gh-action-pypi-publish
+      # is a composite action, and that wrapper can only retry node/docker
+      # actions ("Runner \"composite\" does not implemented"). Confirmed by a
+      # real release failure on this branch: the wrapper's Pre hook errored
+      # even though PUBLISH_PYPI was unset, taking down the whole release job.
       - name: Publish to PyPI (Trusted Publishing)
         if: ${{ vars.PUBLISH_PYPI == 'true' }}
-        uses: Wandalen/wretry.action@v3.8.0
+        uses: pypa/gh-action-pypi-publish@v1.14.0
         with:
-          action: pypa/gh-action-pypi-publish@v1.14.0
-          attempt_limit: 3
-          attempt_delay: 10000
-          with: |
-            packages-dir: wheels   # wheels-only (twine rejects non-distribution files)
-            verify-metadata: false
+          packages-dir: wheels   # wheels-only (twine rejects non-distribution files)
+          verify-metadata: false
 
       - name: Tag the release
         env:
