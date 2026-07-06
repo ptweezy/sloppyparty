@@ -519,7 +519,10 @@ jobs:
           fi
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o SHA256SUMS \
             "https://github.com/${{ github.repository }}/releases/download/sloppyparty-v${VERSION}/SHA256SUMS"
-          retry git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/ptweezy/homebrew-tap.git" tap
+          # rm+clone (not a bare retry) so a partial clone left by a dropped
+          # connection doesn't make the next attempt fail on a non-empty dir.
+          clone_tap() { rm -rf tap; git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/ptweezy/homebrew-tap.git" tap; }
+          retry clone_tap
           mkdir -p tap/Formula
           bash packaging/homebrew/render-formula.sh "$VERSION" SHA256SUMS packaging/homebrew/sloppyparty.rb.tmpl > tap/Formula/sloppyparty.rb
           cd tap
