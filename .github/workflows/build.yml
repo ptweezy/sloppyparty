@@ -70,13 +70,14 @@ jobs:
       - name: Build SFX + pyz
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bzip2
+          source packaging/ci/retry.sh
+          retry sudo apt-get update
+          retry sudo apt-get install -y --no-install-recommends bzip2
           pip install jinja2
           # make-sfx's `git describe` can't parse our sloppyparty-v* tags (it expects
           # copyparty's vX.Y.Z); drop .git so it reads the version from __version__.py.
           rm -rf .git
-          bash scripts/make-sfx.sh fast dl-wd
+          retry bash scripts/make-sfx.sh fast dl-wd
           mv dist/copyparty-sfx.py dist/sloppyparty-sfx.py
           python dist/sloppyparty-sfx.py --version || true
       - uses: actions/upload-artifact@v7.0.1
@@ -144,7 +145,8 @@ jobs:
       - name: Build binary (Debian/glibc container)
         run: |
           set -euo pipefail
-          docker run --rm --platform ${{ matrix.platform }} \
+          source packaging/ci/retry.sh
+          retry docker run --rm --platform ${{ matrix.platform }} \
             -v "$PWD:/src" -w /src python:3.13-slim bash -euc '
               apt-get update
               # zlib1g-dev is required to compile the PyInstaller bootloader from
@@ -190,7 +192,8 @@ jobs:
       - name: Build binary (Alpine/musl)
         run: |
           set -euo pipefail
-          docker run --rm --platform ${{ matrix.platform }} \
+          source packaging/ci/retry.sh
+          retry docker run --rm --platform ${{ matrix.platform }} \
             -v "$PWD:/src" -w /src python:3.13-alpine sh -euc '
               # zlib-dev is required to compile the PyInstaller bootloader from
               # source (no musllinux wheel on these arches).

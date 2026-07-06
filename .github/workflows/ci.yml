@@ -83,9 +83,14 @@ jobs:
       # the gate). Each Linux cell uploads under its own flag; Codecov merges them.
       - name: Upload coverage to Codecov
         if: ${{ matrix.os == 'ubuntu-latest' && !cancelled() }}
-        uses: codecov/codecov-action@v7.0.0
+        continue-on-error: true   # informational only, same as fail_ci_if_error below
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          flags: ${{ matrix.os }}-py${{ matrix.python }}
-          fail_ci_if_error: false
+          action: codecov/codecov-action@v7.0.0
+          attempt_limit: 3
+          attempt_delay: 10000
+          with: |
+            token: ${{ secrets.CODECOV_TOKEN }}
+            files: ./coverage.xml
+            flags: ${{ matrix.os }}-py${{ matrix.python }}
+            fail_ci_if_error: false
