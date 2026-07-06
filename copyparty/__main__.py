@@ -1651,7 +1651,7 @@ def add_safety(ap):
     th_bwrap = ""
     if HAVE_BWRAP:
         zsl = [
-            "bwrap",
+            HAVE_BWRAP,
             "--proc /proc",
             "--tmpfs /tmp",
             "--tmpfs /var",
@@ -1711,6 +1711,9 @@ def add_safety(ap):
     ap2.add_argument("--acam", metavar="V[,V]", type=u, default="GET,HEAD", help="Access-Control-Allow-Methods; list of methods to accept from offsite ('*' behaves like \033[33m--acao\033[0m's description)")
     if not ANYWIN and not UNIX:
         ap2.add_argument("--th-bwrap", metavar="CMD", type=u, default=th_bwrap, help="optional bwrap sandbox command for FFmpeg and dcraw (Linux-only)")
+        ap2.add_argument("--use-bwrap", metavar="C", type=u, default="a", help="a/n/f; [\033[32ma\033[0m]=auto (yes if the program 'bwrap' exists (assumes it works)), [\033[32mn\033[0m]=no (assumes bwrap is broken), [\033[32mf\033[0m]=force (disables FFmpeg if bwrap unavailable)")
+    else:
+        ap2.add_argument("--use-bwrap", metavar="C", type=u, default="n", help=argparse.SUPPRESS)
 
 
 def add_salt(ap, fk_salt, dk_salt, ah_salt):
