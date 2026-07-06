@@ -179,24 +179,43 @@ jobs:
       - uses: docker/setup-qemu-action@v4.2.0
       - uses: docker/setup-buildx-action@v4.2.0
 
-      # GHCR occasionally rejects a multi-arch manifest push with a transient
-      # "blob unknown to registry" (see the 1.0.10 -min release failure), so
-      # retry the whole build+push rather than failing the job on one flake.
+      # NOTE: this step is NOT wrapped in a generic action-retry wrapper.
+      # docker/metadata-action's `tags`/`labels` outputs are multi-line, and a
+      # wrapper that re-parses `with:` as YAML (e.g. Wandalen/wretry.action)
+      # breaks on them ("block mapping entry; a multiline key may not be an
+      # implicit key") -- confirmed by a real failed build on this branch.
+      # GHCR's transient "blob unknown to registry" push failures (see the
+      # 1.0.10 -min release) are instead handled by retrying the job itself:
+      # see the `if: failure()` continuation step below.
       - name: Build and push
-        uses: Wandalen/wretry.action@v3.8.0
+        id: build
+        continue-on-error: true
+        uses: docker/build-push-action@v7.3.0
         with:
-          action: docker/build-push-action@v7.3.0
-          attempt_limit: 3
-          attempt_delay: 15000
-          with: |
-            context: scripts/docker
-            file: scripts/docker/Dockerfile.${{ matrix.variant }}
-            platforms: ${{ steps.target.outputs.platforms }}
-            push: ${{ steps.target.outputs.push == 'true' }}
-            tags: ${{ steps.meta.outputs.tags }}
-            labels: ${{ steps.meta.outputs.labels }}
-            build-args: |
-              ADD_PKG=${{ matrix.add_pkg }}
-            provenance: false
-            cache-from: type=gha,scope=${{ matrix.variant }}
-            cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+          context: scripts/docker
+          file: scripts/docker/Dockerfile.${{ matrix.variant }}
+          platforms: ${{ steps.target.outputs.platforms }}
+          push: ${{ steps.target.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ADD_PKG=${{ matrix.add_pkg }}
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+
+      - name: Build and push (retry)
+        if: steps.build.outcome == 'failure'
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: scripts/docker
+          file: scripts/docker/Dockerfile.${{ matrix.variant }}
+          platforms: ${{ steps.target.outputs.platforms }}
+          push: ${{ steps.target.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ADD_PKG=${{ matrix.add_pkg }}
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
