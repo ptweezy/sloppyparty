@@ -1069,6 +1069,7 @@ window.baguetteBox = (function () {
         if (window.have_vcode && this.tagName == 'VIDEO' && this.rawsrc && !this.hls_tried) {
             console.log('bb-vcode: native playback failed; switching to transcode');
             load_hls(this, this.rawsrc);
+            note_forced_conv(this);
             return;
         }
 
@@ -1093,9 +1094,9 @@ window.baguetteBox = (function () {
             toast.err(20, this.ded, 'bb-ded');
     }
 
-    // switch v to the transcode source while keeping the playback position and
-    // play/pause state (load_hls alone would restart from 0)
-    function conv_keep_pos(v) {
+    // re-point v at a new source (chosen by setsrc) while preserving the
+    // playback position and play/pause state (a raw load would restart from 0)
+    function reload_keep_pos(v, setsrc) {
         var t = v.currentTime || 0,
             playing = !v.paused && !v.ended,
             restore = function () {
@@ -1104,36 +1105,141 @@ window.baguetteBox = (function () {
                 if (playing) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
             };
         v.addEventListener('loadedmetadata', restore);
-        load_hls(v, v.rawsrc);
+        setsrc();
+    }
+
+    // switch v to the on-the-fly transcode ('conv')
+    function conv_keep_pos(v) {
+        reload_keep_pos(v, function () { load_hls(v, v.rawsrc); });
+    }
+
+    // switch v back to the raw file ('orig'); hls_tried stays set so we don't
+    // immediately auto-bounce back to a transcode
+    function native_keep_pos(v) {
+        reload_keep_pos(v, function () {
+            if (v.hls_wd) { clearTimeout(v.hls_wd); v.hls_wd = 0; }
+            if (v.hls) { try { v.hls.destroy(); } catch (ex) { } v.hls = null; }
+            v.hls_tried = 1;
+            v.vsrc_now = 'n';
+            v.setAttribute('src', addq(v.rawsrc, 'cache'));
+            v.load();
+        });
+    }
+
+    // we auto-switched a video that can't play natively over to the transcode;
+    // surface it as a short, cancellable notice instead of doing it silently
+    function note_forced_conv(v) {
+        if (!v || v !== vid())
+            return;
+
+        toast.inf(9, 'this file can\'t play natively in your browser &mdash; switched to conv. <a href="#" id="bb-keeporig">keep original</a>', 'bb-fconv');
+        var a = ebi('bb-keeporig');
+        if (a)
+            a.onclick = function (e) {
+                ev(e);
+                toast.hide();
+                if (vid() === v && v.rawsrc)
+                    native_keep_pos(v);
+            };
     }
 
     // some containers (usually mkv) carry an audio codec the browser can't
-    // decode (ac3/dts/eac3/truehd/pcm); chromium then plays the video fine but
-    // silently, with no 'error' event -- so none of the fallbacks above fire.
-    // detect that (video is decoding, yet zero audio bytes ever decoded) so we
-    // can offer a switch to the transcode source, which re-encodes the audio to
-    // something playable. webkit*DecodedByteCount is chromium-only; browsers
-    // without it that also can't decode the audio generally can't demux the
-    // container either and hit lerr()'s transcode fallback instead.
-    function au_dead(v) {
+    // decode (ac3/dts/eac3/truehd/pcm); the browser then plays the video fine
+    // but silently, with no 'error' event -- so none of the fallbacks above
+    // fire. we detect that and offer a switch to the transcode source, which
+    // re-encodes the audio to something playable.
+
+    // eligibility for the "no sound" offer (everything except the actual
+    // audio-signal test, which differs per browser -- see au_check)
+    function au_offer_ok(v) {
         return window.have_vcode && v && v.rawsrc &&
             vsrc == 'a' &&                            // respect manual orig/conv
             v.vsrc_now == 'n' && !v.au_warned &&
             !v.muted && v.volume > 0 &&               // not silenced by the user
             v.currentTime > 1.5 &&                    // enough played to judge
-            re_vck.test(v.rawsrc) &&                  // mkv/ts/...: silent == broken
-            typeof v.webkitAudioDecodedByteCount == 'number' &&
-            v.webkitVideoDecodedByteCount > 0 &&      // video really is decoding
-            !v.webkitAudioDecodedByteCount;           // ...but no audio, ever
+            re_vck.test(v.rawsrc);                    // mkv/ts/...: silent == broken
+    }
+
+    // lazily tap v's audio through an AnalyserNode so we can tell whether any
+    // sound is actually coming out (the universal signal Firefox/Safari need,
+    // since they lack webkit*DecodedByteCount). reuses copyparty's audio graph:
+    // window.actx + afilt.acst is the single registry of per-element
+    // MediaElementSources -- you may only ever create ONE per element, so we
+    // must go through it rather than make our own. returns null (retryable)
+    // until the AudioContext is actually running; routing audio through a
+    // suspended context would MUTE working audio, so we never do that.
+    function au_analyser(v) {
+        if (v._ana)
+            return v._ana;
+        if (v._ana_fail)
+            return null;
+        try {
+            if (typeof start_actx == 'function')
+                start_actx();  // create + resume the shared AudioContext
+            var ac = window.actx, af = window.afilt;
+            if (!ac || ac.state != 'running' || !af || !af.acst)
+                return null;  // not ready yet; a later timeupdate will retry
+
+            v.id = v.id || ('bbv' + Date.now());
+            var src = af.acst[v.id];
+            if (!src) {
+                // we own the sole source; createMediaElementSource captures the
+                // element's audio, so we must wire it to the speakers ourselves
+                src = af.acst[v.id] = ac.createMediaElementSource(v);
+                src.connect(ac.destination);
+            }
+            var ana = ac.createAnalyser();
+            ana.fftSize = 256;
+            src.connect(ana);  // passive tap; fan-out doesn't alter the audio
+            v._ana = ana;
+        }
+        catch (ex) {
+            console.log('bb-vcode: audio probe unavailable: ' + ex);
+            v._ana_fail = 1;
+        }
+        return v._ana || null;
+    }
+
+    // called from timeupdate/volumechange: is this video playing with no sound?
+    function au_check(v) {
+        if (!au_offer_ok(v))
+            return;
+
+        // chromium: exact "no audio decoder ever ran" signal -- cheap, and it
+        // distinguishes broken audio from a track that's merely silent
+        if (typeof v.webkitAudioDecodedByteCount == 'number') {
+            if (v.webkitVideoDecodedByteCount > 0 && !v.webkitAudioDecodedByteCount)
+                au_offer_conv(v);
+            return;
+        }
+
+        // everyone else: measure actual output via the analyser
+        var ana = au_analyser(v);
+        if (!ana)
+            return;
+
+        var buf = v._anabuf || (v._anabuf = new Uint8Array(ana.frequencyBinCount));
+        ana.getByteFrequencyData(buf);
+        var peak = 0;
+        for (var i = 0; i < buf.length; i++)
+            if (buf[i] > peak) peak = buf[i];
+
+        if (peak > 2) {
+            v.au_warned = 1;  // real sound is coming out; stop checking this file
+            return;
+        }
+        // silent right now; only conclude "dead" after a few continuous seconds
+        // of playback silence (guards against quiet intros / buffering)
+        if (v._sil0 == null)
+            v._sil0 = v.currentTime;
+        if (v.currentTime - v._sil0 >= 4)
+            au_offer_conv(v);
     }
 
     // tiny popup offering to fix a silent video by switching to the transcode
     function au_offer_conv(v) {
-        if (!au_dead(v))
-            return;
-
         v.au_warned = 1;
-        console.log('bb-vcode: video has no decodable audio; offering transcode');
+        console.log('bb-vcode: no audible audio; offering transcode');
         toast.inf(15, 'no sound? your browser can\'t decode this file\'s audio codec &mdash; <a href="#" id="bb-auconv">switch to conv</a>', 'bb-auconv');
         var a = ebi('bb-auconv');
         if (a)
@@ -1207,6 +1313,7 @@ window.baguetteBox = (function () {
                 if (window.have_vcode && this.rawsrc && !this.hls_tried && !this.videoWidth && re_vck.test(this.rawsrc)) {
                     console.log('bb-vcode: no decodable video track; switching to transcode');
                     load_hls(this, this.rawsrc);
+                    note_forced_conv(this);
                 }
             });
         if (!is_vid)
@@ -1222,20 +1329,26 @@ window.baguetteBox = (function () {
             image.onended = vidEnd;
             image.onplay = image.onpause = ppHandler;
             // detect a video that plays but has no working audio, and offer to
-            // switch to the transcode source (see au_dead / au_offer_conv)
-            image.ontimeupdate = function () { au_offer_conv(this); };
+            // switch to the transcode source (see au_check)
+            image.ontimeupdate = function () { au_check(this); };
             image.onvolumechange = function () {
                 // a user reaching for the volume is a strong "i expected sound"
                 // signal, so re-check right away instead of waiting for the timer
-                if (!this.muted && this.volume > 0) au_offer_conv(this);
+                if (!this.muted && this.volume > 0) au_check(this);
             };
             // manual override (vsrc) wins; in 'auto' we decide per container:
             // re_vhls = no browser can demux these, always transcode; re_vck on
             // safari/ios = those play HLS natively but can't demux mkv/ts/etc and
             // won't reliably fire 'error', so transcode upfront rather than stall
-            if (window.have_vcode && (vsrc == 't' || (vsrc == 'a' && (re_vhls.test(rawSrc) ||
-                (re_vck.test(rawSrc) && image.canPlayType('application/vnd.apple.mpegurl'))))))
+            var auto_conv = vsrc == 'a' && (re_vhls.test(rawSrc) ||
+                (re_vck.test(rawSrc) && image.canPlayType('application/vnd.apple.mpegurl')));
+            if (window.have_vcode && (vsrc == 't' || auto_conv)) {
                 load_hls(image, rawSrc);
+                // auto (not a manual 'conv' choice): flag it so we can tell the
+                // user we overrode native playback, once it's in the DOM (below)
+                if (auto_conv)
+                    image.forced_conv = 1;
+            }
             else {
                 image.vsrc_now = 'n';
                 if (vsrc == 'n')
@@ -1252,6 +1365,7 @@ window.baguetteBox = (function () {
                             return;
                         console.log('bb-vcode: native playback never started; switching to transcode');
                         load_hls(image, image.rawsrc);
+                        note_forced_conv(image);
                     }, 4000);
             }
         }
@@ -1260,6 +1374,11 @@ window.baguetteBox = (function () {
             image.title = imageCaption;
 
         figure.appendChild(image);
+
+        // the upfront auto-transcode (above) ran before the <video> was in the
+        // DOM; now that it's attached, surface the cancellable "keep original"
+        if (image.forced_conv)
+            note_forced_conv(image);
 
         if (is_vid && window.afilt)
             afilt.apply(undefined, image);
