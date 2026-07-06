@@ -358,6 +358,11 @@ necho() {
 	rm -rf ../copyparty/web/deps
 	cp -pR copyparty/web/deps ../copyparty/web
 
+	# hls.js is fork-specific and not in the upstream webdeps just fetched, so
+	# pull it separately (best-effort) into both the staged and source trees
+	bash ../packaging/ci/fetch-hls.sh copyparty/web/deps || true
+	bash ../packaging/ci/fetch-hls.sh ../copyparty/web/deps || true
+
 	rm x.py
 }
 
@@ -380,6 +385,26 @@ plan to make any changes to the mostly-third-party webdeps
 
 there may be additional hints in the devnotes:
 https://github.com/9001/copyparty/blob/hovudstraum/docs/devnotes.md#building
+EOF
+	exit 1
+}
+
+# hls.light.js is a fork-specific webdep (the on-the-fly video transcoder);
+# upstream webdeps do not include it, so "dl-wd" above cannot provide it and
+# the generic mini-fa.woff check above will not catch its absence. verify it
+# separately so we fail loud instead of shipping an sfx where transcoding is
+# broken in every non-safari browser (safari/ios use native HLS, no library)
+[ -e copyparty/web/deps/hls.light.js.gz ] || [ $ign_wd ] || { berr <<'EOF'
+ERROR:
+  webdeps are missing hls.light.js (the on-the-fly video transcoder);
+  transcoding will fail in firefox/chrome (safari/ios use native HLS).
+
+  this file is fork-specific and is NOT part of upstream webdeps, so
+  "dl-wd" cannot supply it. build the webdeps from source instead:
+
+      make -C scripts/deps-docker
+
+  or pass "ign-wd" to build anyway without the video transcoder.
 EOF
 	exit 1
 }

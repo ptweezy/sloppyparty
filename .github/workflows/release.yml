@@ -504,9 +504,12 @@ jobs:
           cd tap
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- Formula/sloppyparty.rb; then
+          git add Formula/sloppyparty.rb
+          # --cached (not plain `git diff`): plain diff never compares untracked
+          # files, so on the first-ever commit of this formula it would report
+          # "no difference" and skip the push every time.
+          if git diff --cached --quiet; then
             echo "Formula already current for ${VERSION}."; exit 0
           fi
-          git add Formula/sloppyparty.rb
           git commit -m "sloppyparty ${VERSION}"
           git push
