@@ -367,6 +367,8 @@ flagcats = {
         "epilogues=.epilogue.html": "files to embed below/after files",
         "readmes=readme.md,README.md": "files to embed as readmes",
         "preadmes=preadme.md,PREADME.md": "files to embed as preadmes",
+        "plainreadme": "embed readme/preadme as monospace plaintext",
+        "plainlogues": "embed prologue/epilogue as sans-serif plaintext",
         "no_readme": "disable embedding readme/preadme",
         "no_logues": "disable embedding prologue/epilogue",
         "no_sb_md": "disable js sandbox for markdown files",

@@ -4381,6 +4381,8 @@ class HttpCli(object):
                 logues[n] = read_utf8(self.log, fsenc(fn), False)
                 if "exp" in vn.flags:
                     logues[n] = self._expand(logues[n], vn.flags.get("exp_lg") or [])
+                if "plainlogues" in vn.flags:
+                    logues[n] = html_escape(logues[n]).replace("\n", "<br />")
                 break
 
         readmes = ["", ""]
@@ -4398,6 +4400,10 @@ class HttpCli(object):
                 readmes[n] = read_utf8(self.log, fsenc(fn), False)
                 if "exp" in vn.flags:
                     readmes[n] = self._expand(readmes[n], vn.flags.get("exp_md") or [])
+                if "plainreadme" in vn.flags:
+                    zs = html_escape(readmes[n]).replace("\n", "<br />")
+                    logues[n] = "<pre>%s</pre>" % (zs,)
+                    readmes[n] = ""
                 break
 
         return logues, readmes
