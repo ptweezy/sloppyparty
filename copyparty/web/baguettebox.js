@@ -1093,6 +1093,58 @@ window.baguetteBox = (function () {
             toast.err(20, this.ded, 'bb-ded');
     }
 
+    // switch v to the transcode source while keeping the playback position and
+    // play/pause state (load_hls alone would restart from 0)
+    function conv_keep_pos(v) {
+        var t = v.currentTime || 0,
+            playing = !v.paused && !v.ended,
+            restore = function () {
+                v.removeEventListener('loadedmetadata', restore);
+                try { if (t > 0.1 && isFinite(t)) v.currentTime = t; } catch (ex) { }
+                if (playing) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
+            };
+        v.addEventListener('loadedmetadata', restore);
+        load_hls(v, v.rawsrc);
+    }
+
+    // some containers (usually mkv) carry an audio codec the browser can't
+    // decode (ac3/dts/eac3/truehd/pcm); chromium then plays the video fine but
+    // silently, with no 'error' event -- so none of the fallbacks above fire.
+    // detect that (video is decoding, yet zero audio bytes ever decoded) so we
+    // can offer a switch to the transcode source, which re-encodes the audio to
+    // something playable. webkit*DecodedByteCount is chromium-only; browsers
+    // without it that also can't decode the audio generally can't demux the
+    // container either and hit lerr()'s transcode fallback instead.
+    function au_dead(v) {
+        return window.have_vcode && v && v.rawsrc &&
+            vsrc == 'a' &&                            // respect manual orig/conv
+            v.vsrc_now == 'n' && !v.au_warned &&
+            !v.muted && v.volume > 0 &&               // not silenced by the user
+            v.currentTime > 1.5 &&                    // enough played to judge
+            re_vck.test(v.rawsrc) &&                  // mkv/ts/...: silent == broken
+            typeof v.webkitAudioDecodedByteCount == 'number' &&
+            v.webkitVideoDecodedByteCount > 0 &&      // video really is decoding
+            !v.webkitAudioDecodedByteCount;           // ...but no audio, ever
+    }
+
+    // tiny popup offering to fix a silent video by switching to the transcode
+    function au_offer_conv(v) {
+        if (!au_dead(v))
+            return;
+
+        v.au_warned = 1;
+        console.log('bb-vcode: video has no decodable audio; offering transcode');
+        toast.inf(15, 'no sound? your browser can\'t decode this file\'s audio codec &mdash; <a href="#" id="bb-auconv">switch to conv</a>', 'bb-auconv');
+        var a = ebi('bb-auconv');
+        if (a)
+            a.onclick = function (e) {
+                ev(e);
+                toast.hide();
+                if (vid() === v && v.rawsrc)
+                    conv_keep_pos(v);  // transcode just this file; global mode stays 'auto'
+            };
+    }
+
     function loadImage(index, callback) {
         var imageContainer = imagesElements[index];
         var galleryItem = currentGallery[index];
@@ -1169,6 +1221,14 @@ window.baguetteBox = (function () {
             // ios ignores poster
             image.onended = vidEnd;
             image.onplay = image.onpause = ppHandler;
+            // detect a video that plays but has no working audio, and offer to
+            // switch to the transcode source (see au_dead / au_offer_conv)
+            image.ontimeupdate = function () { au_offer_conv(this); };
+            image.onvolumechange = function () {
+                // a user reaching for the volume is a strong "i expected sound"
+                // signal, so re-check right away instead of waiting for the timer
+                if (!this.muted && this.volume > 0) au_offer_conv(this);
+            };
             // manual override (vsrc) wins; in 'auto' we decide per container:
             // re_vhls = no browser can demux these, always transcode; re_vck on
             // safari/ios = those play HLS natively but can't demux mkv/ts/etc and
