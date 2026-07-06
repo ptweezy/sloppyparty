@@ -358,6 +358,11 @@ necho() {
 	rm -rf ../copyparty/web/deps
 	cp -pR copyparty/web/deps ../copyparty/web
 
+	# hls.js is fork-specific and not in the upstream webdeps just fetched, so
+	# pull it separately (best-effort) into both the staged and source trees
+	bash ../packaging/ci/fetch-hls.sh copyparty/web/deps || true
+	bash ../packaging/ci/fetch-hls.sh ../copyparty/web/deps || true
+
 	rm x.py
 }
 

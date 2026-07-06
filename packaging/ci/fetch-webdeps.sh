@@ -17,6 +17,11 @@ url="${1:-https://github.com/9001/copyparty/releases/latest/download/copyparty-s
 py="${PYTHON:-python3}"
 dest="copyparty/web/deps"
 
+# hls.js is fork-specific and absent from the upstream reference SFX, so fetch it
+# separately (idempotent, best-effort). Do this BEFORE the populated-skip below so
+# it also runs when the other deps are already in place.
+bash "$(dirname "$0")/fetch-hls.sh" "$dest" || true
+
 # Skip if deps already look populated (more than the couple of committed stubs).
 if [ "$(find "$dest" -type f 2>/dev/null | wc -l)" -gt 6 ]; then
   echo "web/deps already populated; skipping fetch"
