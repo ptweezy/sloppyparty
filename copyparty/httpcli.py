@@ -7204,7 +7204,7 @@ class HttpCli(object):
             else:
                 ls_names = exclude_dotfiles(ls_names)
 
-        add_dk = vf.get("dk")
+        add_dk = not use_filekey and vf.get("dk")
         add_fk = vf.get("fk")
         fk_alg = 2 if "fka" in vf else 1
         if add_dk:
