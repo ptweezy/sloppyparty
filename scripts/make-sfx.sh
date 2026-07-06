@@ -384,6 +384,26 @@ EOF
 	exit 1
 }
 
+# hls.light.js is a fork-specific webdep (the on-the-fly video transcoder);
+# upstream webdeps do not include it, so "dl-wd" above cannot provide it and
+# the generic mini-fa.woff check above will not catch its absence. verify it
+# separately so we fail loud instead of shipping an sfx where transcoding is
+# broken in every non-safari browser (safari/ios use native HLS, no library)
+[ -e copyparty/web/deps/hls.light.js.gz ] || [ $ign_wd ] || { berr <<'EOF'
+ERROR:
+  webdeps are missing hls.light.js (the on-the-fly video transcoder);
+  transcoding will fail in firefox/chrome (safari/ios use native HLS).
+
+  this file is fork-specific and is NOT part of upstream webdeps, so
+  "dl-wd" cannot supply it. build the webdeps from source instead:
+
+      make -C scripts/deps-docker
+
+  or pass "ign-wd" to build anyway without the video transcoder.
+EOF
+	exit 1
+}
+
 ver=
 [ -z "$repack" ] &&
 git describe --tags >/dev/null 2>/dev/null && {
