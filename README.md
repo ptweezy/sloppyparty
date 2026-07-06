@@ -3105,6 +3105,8 @@ permissions `wG` (write + upget) lets users upload files and receive their own f
 
 share specific folders in a volume  without giving away full read-access to the rest -- the visitor only needs the `g` (get) permission to view the link
 
+> ℹ️ a better alternative to this is [shares](#shares)
+
 volflag `dk` generates dirkeys (per-directory accesskeys) for all folders, granting read-access to that folder; by default only that folder itself, no subfolders
 
 volflag `dky` disables the actual key-check, meaning anyone can see the contents of a folder where they have `g` access, but not its subdirectories
