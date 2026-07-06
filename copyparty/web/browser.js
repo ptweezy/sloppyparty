@@ -4078,7 +4078,7 @@ var fileman = (function () {
 			'<tr><td>perms</td><td class="sh_axs">',
 		];
 		for (var a = 0; a < perms.length; a++)
-			if (!has(['admin', 'move', 'delete'], perms[a]))
+			if (!has(['admin', 'move', 'delete', 'upget'], perms[a]))
 				html.push('<a href="#" class="tgl btn">' + perms[a] + '</a>');
 
 		if (has(perms, 'write'))

@@ -444,6 +444,10 @@ IMPLICATIONS = [
     ["no_logue", "no_logues"],  # user-typo
     ["nologues", "no_logues"],  # user-typo
     ["nologue", "no_logues"],  # user-typo
+    ["plainlogue", "plainlogues"],  # user-typo
+    ["plainreadmes", "plainreadme"],  # user-typo
+    ["noscript", "plainlogues"],
+    ["noscript", "plainreadme"],
     ["sftpvv", "sftpv"],
     ["smbw", "smb"],
     ["smb1", "smb"],
