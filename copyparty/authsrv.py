@@ -2806,12 +2806,27 @@ class AuthSrv(object):
             zs = "select %s from up where rd=? and fn=?" % (", ".join(up_q),)
             vol.flags["ls_q_m"] = (zs if up_m else "", up_m)
 
-        for tab in (rhisttab, rdbpaths):
-            for ap, vn in tab.items():
-                if "show_hist" not in vn.flags and (
-                    ap == os.path.join(vn.realpath, ".hist")
-                ):
-                    vn.add("", ".hist", ".hist")
+        for vn1 in vfs.all_nodes.values():
+            if "show_hist" in vn1.flags or not vn1.realpath:
+                continue
+            ap = vn1.realpath.replace(os.sep, "/")
+            apS = ap.rstrip("/") + "/"
+            for vn2 in vfs.all_nodes.values():
+                if not vn2.realpath:
+                    continue
+                haps = [
+                    vn2.histpath.replace(os.sep, "/"),
+                    vn2.dbpath.replace(os.sep, "/"),
+                ]
+                for hap in list(set(haps)):
+                    if not hap.startswith(apS):
+                        continue
+                    zs = hap[len(apS) :]
+                    if "/" in zs:
+                        t = "note: /%s/%s gives access to %s"
+                        self.log(t % (vn2.vpath, zs, hap), 3)
+                    else:
+                        vn1.add("", zs, zs)
 
         vfs.all_fvols = {
             zs: vol for zs, vol in vfs.all_vols.items() if "is_file" in vol.flags
