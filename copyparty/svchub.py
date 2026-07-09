@@ -476,6 +476,8 @@ class SvcHub(object):
             }
 
         args.th_poke = min(args.th_poke, args.th_maxage, args.ac_maxage)
+        if not args.th_clean:
+            args.th_poke = 0
 
         zms = ""
         if not args.https_only:
