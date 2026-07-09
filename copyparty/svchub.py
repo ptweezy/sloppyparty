@@ -233,9 +233,10 @@ class SvcHub(object):
 
         self.lo1 = self.lo2 = ""
         if args.lo:
-            if "%" in args.lo and "%R" not in args.lo:
+            if "%R" not in args.lo:
                 args.lo += "%R"
-            if not args.rlo:
+            if args.rlo in ("", "no"):
+                args.rlo = ""
                 args.lo = args.lo.replace("%R", "")
             try:
                 self.lo1, self.lo2 = args.lo.split("%R")

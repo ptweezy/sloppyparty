@@ -1042,7 +1042,7 @@ def get_sects():
             .1   = when necessary, append a dot followed by a single digit
             .1!  = counter is always added, even when not necessary
             -3   = a hyphen followed by three-digit counter
-            (blank) = disable counter; overwrite existing logfile
+            no   = disable counter; overwrite existing logfile
             """
             ),
         ],
