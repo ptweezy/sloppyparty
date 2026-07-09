@@ -1195,7 +1195,7 @@ class AuthSrv(object):
         for ptn, sigil in ((PTN_U_ANY, "${u}"), (PTN_G_ANY, "${g}")):
             if bool(ptn.search(src)) != bool(ptn.search(dst)):
                 zsl.append(sigil)
-        if zsl:
+        if zsl and src != "//NULL":
             t = "ERROR: if %s is mentioned in a volume definition, it must be included in both the filesystem-path [%s] and the volume-url [/%s]"
             t = "\n".join([t % (x, src, dst) for x in zsl])
             self.log(t, 1)
@@ -1275,8 +1275,16 @@ class AuthSrv(object):
         daxs: dict[str, AXS],
         mflags: dict[str, dict[str, Any]],
     ) -> tuple[str, str]:
-        src = os.path.expanduser(self.args.shenvexp(src))
-        src = absreal(src)
+        if src == "//NULL":
+            src = ""
+        else:
+            src = os.path.expanduser(self.args.shenvexp(src))
+            src = absreal(src)
+
+        if dst == "//NULL":
+            t = "//NULL given as URL instead of filesystem-path"
+            self.log(t, 1)
+            raise Exception(t)
         dst = dst.strip("/")
 
         if dst in mount:
@@ -1284,7 +1292,7 @@ class AuthSrv(object):
             self.log(t.format(dst, mount[dst][0], src), c=1)
             raise Exception(BAD_CFG)
 
-        if src in mount.values():
+        if src and src in mount.values():
             t = "filesystem-path [{}] mounted in multiple locations:"
             t = t.format(src)
             for v in [k for k, v in mount.items() if v[0] == src] + [dst]:
@@ -1293,7 +1301,7 @@ class AuthSrv(object):
             self.log(t, c=3)
             raise Exception(BAD_CFG)
 
-        if not bos.path.exists(src):
+        if src and not bos.path.exists(src):
             self.log("warning: filesystem-path did not exist: %r" % (src,), 3)
 
         vf = {}
@@ -1861,7 +1869,7 @@ class AuthSrv(object):
         if WINDOWS:
             cased = {}
             for vp, (ap, vp0) in mount.items():
-                cased[vp] = (absreal(ap), vp0)
+                cased[vp] = (absreal(ap) if ap else "", vp0)
 
             mount = cased
 
