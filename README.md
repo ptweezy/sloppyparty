@@ -1337,7 +1337,8 @@ for the above example to work, add the commandline argument `-e2ts` to also scan
 # server config
 
 using arguments or config files, or a mix of both:
-* config files (`-c some.conf`) can set additional commandline arguments; see [./docs/example.conf](docs/example.conf) and [./docs/example2.conf](docs/example2.conf)
+* using a config-file (`-c some.conf`) is best, easier to read/maintain; see [./docs/example.conf](docs/example.conf)
+  * for complex and intricate setups, see how [./docs/example2.conf](docs/example2.conf) includes additional config-files/folders with `% copyparty.d` which loads [./docs/copyparty.d/some.conf](docs/copyparty.d/some.conf)
 * `kill -s USR1` (same as `systemctl reload copyparty`) to reload accounts and volumes from config files without restarting
   * or click the `[reload cfg]` button in the control-panel if the user has `a`/admin in any volume
   * changes to the `[global]` config section requires a restart to take effect
