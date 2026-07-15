@@ -429,6 +429,7 @@ IMPLICATIONS = [
     ["e2vu", "e2v"],
     ["e2vp", "e2v"],
     ["e2v", "e2d"],
+    ["srch_nfkc", "srch_icase"],
     ["hardlink_only", "hardlink"],
     ["hardlink", "dedup"],
     ["tftpvv", "tftpv"],

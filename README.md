@@ -2576,6 +2576,7 @@ buggy feature? rip it out  by setting any of the following environment variables
 | `PRTY_NO_IPV6`       | disable some ipv6 support (should not be necessary since windows 2000) |
 | `PRTY_NO_LZMA`       | disable streaming xz compression of incoming uploads |
 | `PRTY_NO_MP`         | disable all use of the python `multiprocessing` module (actual multithreading, cpu-count for parsers/thumbnailers) |
+| `PRTY_NO_UNIDATA`    | disable loading the unicodedata c-extension; saves 400k ram, breaks `--srch-nfkc` |
 | `PRTY_NO_SQLITE`     | disable all database-related functionality (file indexing, metadata indexing, most file deduplication logic) |
 | `PRTY_NO_TLS`        | disable native HTTPS support; if you still want to accept HTTPS connections then TLS must now be terminated by a reverse-proxy |
 | `PRTY_NO_TPOKE`      | disable systemd-tmpfilesd avoider |
