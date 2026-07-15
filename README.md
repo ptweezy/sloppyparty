@@ -773,7 +773,7 @@ press `g` or `田` to toggle grid-view instead of the file listing  and `t` togg
 ![copyparty-thumbs-fs8](https://user-images.githubusercontent.com/241032/129636211-abd20fa2-a953-4366-9423-1c88ebb96ba9.png)
 
 it does static images with Pillow / pyvips / FFmpeg, and uses FFmpeg for video files, so you may want to `--no-thumb` or maybe just `--no-vthumb` depending on how dangerous your users are
-* pyvips is 3x faster than Pillow, Pillow is 3x faster than FFmpeg
+* Pillow is 3x faster (and safer) than FFmpeg
 * disable thumbnails for specific volumes with volflag `dthumb` for all, or `dvthumb` / `dathumb` / `dithumb` for video/audio/images only
 * for installing FFmpeg on windows, see [optional dependencies](#optional-dependencies)
 
@@ -3241,7 +3241,7 @@ enable sending [zeromq messages](#zeromq) from event-hooks: `pyzmq`
 
 enable [smb](#smb-server) support (**not** recommended): `impacket==0.13.0`
 
-`pyvips` gives higher quality thumbnails than `Pillow` and is 320% faster, using 270% more ram
+`pyvips` adds support for some additional image formats, but can use extreme amounts of RAM
 * to install `pyvips` on Linux: `sudo apt install libvips42 && python3 -m pip install --user -U pyvips`
 * to install `pyvips` on windows: `pip install --user -U "pyvips[binary]"`
 
