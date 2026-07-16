@@ -3037,6 +3037,10 @@ class AuthSrv(object):
                 t = "hint: enable upload deduplication with --dedup (but see readme for consequences)"
                 self.log(t, 6)
 
+            if MACOS and not self.args.srch_nfkc:
+                t = "hint: enable --srch-nfkc to improve unicode filename/path search on MacOS"
+                self.log(t, 6)
+
             zv, _ = vfs.get("/", "*", False, False)
             zs = zv.realpath.lower()
             if zs in ("/", "c:\\") or zs.startswith(r"c:\windows"):

@@ -1055,8 +1055,8 @@ class SvcHub(object):
         # fmt: off
         to_check = [
             (HAVE_SQLITE3, "sqlite", "sessions and file/media indexing"),
-            (HAVE_PIL, "pillow", "image thumbnails (plenty fast)"),
-            (HAVE_VIPS, "vips", "image thumbnails (faster, eats more ram)"),
+            (HAVE_PIL, "pillow", "image thumbnails (good and fast)"),
+            (HAVE_VIPS, "vips", "image thumbnails (eats ram; will prefer pillow)"),
             (H_PIL_WEBP, "pillow-webp", "create thumbnails as webp files"),
             (HAVE_FFMPEG, "ffmpeg", t_ff + ", good-but-slow image thumbnails"),
             (HAVE_FFPROBE, "ffprobe", t_ff + ", read audio/media tags"),
