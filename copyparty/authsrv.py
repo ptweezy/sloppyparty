@@ -3244,6 +3244,7 @@ class AuthSrv(object):
 
         self.js_ls = {}
         self.js_htm = ""
+        self.md_htm = ""
         for vp, vn in self.vfs.all_nodes.items():
             if enshare and vp.startswith(shrs):
                 continue  # propagates later in this func
@@ -3360,6 +3361,7 @@ class AuthSrv(object):
             dbv = vol.get_dbv("")[0]
             vol.js_ls = vol.js_ls or dbv.js_ls or {}
             vol.js_htm = vol.js_htm or dbv.js_htm or "{}"
+            vol.md_htm = vol.md_htm or dbv.md_htm or "{}"
 
             zs = str(vol.flags.get("tcolor") or self.args.tcolor)
             vol.flags["tcolor"] = zs.lstrip("#")
