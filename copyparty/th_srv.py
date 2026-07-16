@@ -278,7 +278,7 @@ class ThumbSrv(object):
         self.log = self._log
         self.nextlog = 0
 
-        self.poke_cd = Cooldown(self.args.th_poke)
+        self.poke_cd = Cooldown(self.args.th_poke) if self.args.th_poke else None
 
         self.mutex = threading.Lock()
         self.busy: dict[str, list[threading.Condition]] = {}
@@ -838,13 +838,20 @@ class ThumbSrv(object):
 
     def conv_ffmpeg(self, abspath: str, tpath: str, fmt: str, vn: VFS) -> None:
         self.wait4ram(0.2, tpath)
-        ret, _, _, _ = ffprobe(abspath, int(vn.flags["convt"] / 2))
+        ret, raw, strms, ctnr = ffprobe(abspath, int(vn.flags["convt"] / 2))
         if not ret:
             return
 
         if "vc" not in ret and "ac" in ret:
             # audio in a video trenchcoat
             return self.conv_spec(abspath, tpath, fmt, vn)
+
+        for strm in strms:
+            if (
+                strm.get("codec_type") == "video"
+                and strm.get("DISPOSITION:attached_pic") == "1"
+            ):
+                return self.conv_emb_cv(abspath, tpath, fmt, vn, strm)
 
         ext = abspath.rsplit(".")[-1].lower()
         if ext in ["h264", "h265"] or ext in self.fmt_ffi:
@@ -1424,7 +1431,7 @@ class ThumbSrv(object):
         return ret
 
     def poke(self, tdir: str) -> None:
-        if not self.poke_cd.poke(tdir):
+        if not self.poke_cd or not self.poke_cd.poke(tdir):
             return
 
         ts = int(time.time())

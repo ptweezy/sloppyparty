@@ -234,9 +234,10 @@ class SvcHub(object):
 
         self.lo1 = self.lo2 = ""
         if args.lo:
-            if "%" in args.lo and "%R" not in args.lo:
+            if "%R" not in args.lo:
                 args.lo += "%R"
-            if not args.rlo:
+            if args.rlo in ("", "no"):
+                args.rlo = ""
                 args.lo = args.lo.replace("%R", "")
             try:
                 self.lo1, self.lo2 = args.lo.split("%R")
@@ -501,6 +502,8 @@ class SvcHub(object):
             }
 
         args.th_poke = min(args.th_poke, args.th_maxage, args.ac_maxage)
+        if not args.th_clean:
+            args.th_poke = 0
 
         zms = ""
         if not args.https_only:
@@ -1052,8 +1055,8 @@ class SvcHub(object):
         # fmt: off
         to_check = [
             (HAVE_SQLITE3, "sqlite", "sessions and file/media indexing"),
-            (HAVE_PIL, "pillow", "image thumbnails (plenty fast)"),
-            (HAVE_VIPS, "vips", "image thumbnails (faster, eats more ram)"),
+            (HAVE_PIL, "pillow", "image thumbnails (good and fast)"),
+            (HAVE_VIPS, "vips", "image thumbnails (eats ram; will prefer pillow)"),
             (H_PIL_WEBP, "pillow-webp", "create thumbnails as webp files"),
             (HAVE_FFMPEG, "ffmpeg", t_ff + ", good-but-slow image thumbnails"),
             (HAVE_FFPROBE, "ffprobe", t_ff + ", read audio/media tags"),
