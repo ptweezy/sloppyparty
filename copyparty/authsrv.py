@@ -3801,7 +3801,7 @@ class AuthSrv(object):
         lst = set(zs.split())
         askip = set("a v c vc cgen exp_lg exp_md theme".split())
 
-        t = "exp_lg exp_md ext_th_d mv_re_r mv_re_t rm_re_r rm_re_t srch_re_dots srch_re_nodot"
+        t = "emb_all emb_lgs emb_mds exp_lg exp_md ext_th_d ls_q_m mv_re_r mv_re_t rm_re_r rm_re_t oh_f oh_g rw_edit_set srch_re_dots srch_re_nodot th_coversd th_coversl th_covers_set th_coversd_set"
         fskip = set(t.split())
 
         # keymap from argv to vflag
@@ -3928,6 +3928,9 @@ class AuthSrv(object):
                 except:
                     pass
 
+                if k in ("chmod_d", "chmod_f"):
+                    v = "%o" % (v,)
+
                 try:
                     ak = vmap[k]
                     v2 = getattr(self.args, ak)
@@ -3937,7 +3940,7 @@ class AuthSrv(object):
                     except:
                         pass
 
-                    if v2 is v:
+                    if v2 == v:
                         continue
                 except:
                     pass
