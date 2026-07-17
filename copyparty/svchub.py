@@ -1209,14 +1209,6 @@ class SvcHub(object):
         if al.rsp_jtr:
             al.rsp_slp = 0.000001
 
-        zsl = al.th_covers.split(",")
-        zsl = [x.strip() for x in zsl]
-        zsl = [x for x in zsl if x]
-        al.th_covers = zsl
-        al.th_coversd = zsl + ["." + x for x in zsl]
-        al.th_covers_set = set(al.th_covers)
-        al.th_coversd_set = set(al.th_coversd)
-
         zs = al.use_bwrap.strip().lower()
         if zs == "a":
             if not HAVE_BWRAP:
