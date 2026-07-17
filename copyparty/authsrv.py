@@ -2612,6 +2612,13 @@ class AuthSrv(object):
                 t = "WARNING: volume [/%s]: invalid value specified for ext-th: %s"
                 self.log(t % (vol.vpath, etv), 3)
 
+            zsl = [x.strip() for x in vol.flags["th_covers"].split(",")]
+            zsl = [x for x in zsl if x not in ("", "no")]
+            vol.flags["th_coversl"] = zsl
+            vol.flags["th_coversd"] = zsl + ["." + x for x in zsl]
+            vol.flags["th_covers_set"] = set(vol.flags["th_coversl"])
+            vol.flags["th_coversd_set"] = set(vol.flags["th_coversd"])
+
             zsl = [x.strip() for x in vol.flags["rw_edit"].split(",")]
             zsl = [x for x in zsl if x]
             vol.flags["rw_edit"] = ",".join(zsl)
@@ -3789,7 +3796,7 @@ class AuthSrv(object):
             "",
         ]
 
-        csv = set("i p th_covers zm_on zm_off zs_on zs_off".split())
+        csv = set("i p zm_on zm_off zs_on zs_off".split())
         zs = "c ihead ohead mtm mtp on403 on404 xac xad xar xau xiu xban xbc xbd xbr xbu xm"
         lst = set(zs.split())
         askip = set("a v c vc cgen exp_lg exp_md theme".split())

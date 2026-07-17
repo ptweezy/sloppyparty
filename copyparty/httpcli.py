@@ -6856,7 +6856,8 @@ class HttpCli(object):
                 nothumb = "dthumb" in dbv.flags
                 if is_dir:
                     vrem = vrem.rstrip("/")
-                    if nothumb:
+                    cvs = dbv.flags["th_coversl"]
+                    if nothumb or not cvs:
                         pass
                     elif icur and vrem:
                         q = "select fn from cv where rd=? and dn=?"
@@ -6873,7 +6874,7 @@ class HttpCli(object):
                         except:
                             pass
                     else:
-                        for fn in self.args.th_covers:
+                        for fn in cvs:
                             fp = os.path.join(abspath, fn)
                             try:
                                 st = bos.stat(fp)
@@ -7636,7 +7637,7 @@ class HttpCli(object):
                         self.conn.hsrv.j2[tpl] = j2env.get_template(tname)
             thumb = ""
             is_pic = is_vid = is_au = False
-            for fn in self.args.th_coversd:
+            for fn in vn.flags["th_coversd"]:
                 if fn in lnames:
                     thumb = lnames[fn]
                     break
