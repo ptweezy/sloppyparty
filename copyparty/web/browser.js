@@ -4058,6 +4058,11 @@ var fileman = (function () {
 		}
 		shui.style.display = 'block';
 
+		var wr = has(perms, 'write') && !fns.length;
+		var nope = ['admin', 'move', 'delete', 'upget'];
+		if (!wr)
+			nope.push('write');
+
 		var html = [
 			'<div>',
 			'<table>',
@@ -4078,10 +4083,10 @@ var fileman = (function () {
 			'<tr><td>perms</td><td class="sh_axs">',
 		];
 		for (var a = 0; a < perms.length; a++)
-			if (!has(['admin', 'move', 'delete', 'upget'], perms[a]))
+			if (!has(nope, perms[a]))
 				html.push('<a href="#" class="tgl btn">' + perms[a] + '</a>');
 
-		if (has(perms, 'write'))
+		if (wr)
 			html.push('<a href="#" class="btn">write-only</a>');
 
 		html.push('</td></tr></div');
