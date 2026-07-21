@@ -4207,7 +4207,7 @@ def _runhook(
             return mod.main(ja)
         arg = json.dumps(ja)
     else:
-        arg = txt[0] if txt else ap
+        arg = txt[0] if txt and src in ("xm", "xban") else ap
 
     if acmd[0].startswith("zmq:"):
         zi, zs = _zmq_hook(log, verbose, src, acmd[0][4:].lower(), arg, wait, sp_ka)
