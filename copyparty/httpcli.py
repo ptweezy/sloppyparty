@@ -3261,6 +3261,8 @@ class HttpCli(object):
             dst = vfs.canonical(rem)
             try:
                 if not bos.path.isdir(dst):
+                    if "nosub" in vfs.flags:
+                        raise Pebkac(500, "no subdirectories allowed")
                     bos.makedirs(dst, vf=vfs.flags)
             except OSError as ex:
                 self.log("makedirs failed %r" % (dst,))
@@ -3272,6 +3274,8 @@ class HttpCli(object):
                         raise Pebkac(400, "some file got your folder name")
 
                     raise Pebkac(500, min_ex())
+            except Pebkac:
+                raise
             except:
                 raise Pebkac(500, min_ex())
 
@@ -3898,7 +3902,7 @@ class HttpCli(object):
             rnd = 0
         else:
             rnd = int(self.uparam.get("rand") or self.headers.get("rand") or 0)
-            if vfs.flags.get("rand"):  # force-enable
+            if "rand" in vfs.flags:  # force-enable
                 rnd = max(rnd, vfs.flags["nrand"])
 
         zs = self.uparam.get("life", self.headers.get("life", ""))
@@ -7275,17 +7279,16 @@ class HttpCli(object):
         e2d = "e2d" in vn.flags
         e2t = "e2t" in vn.flags
 
+        og_fn = ""
         add_og = "og" in vn.flags
         if add_og:
             if "th" in self.uparam or "raw" in self.uparam or "opds" in self.uparam:
                 add_og = False
             elif vn.flags["og_ua"]:
                 add_og = vn.flags["og_ua"].search(self.ua)
-            og_fn = ""
 
         if "v" in self.uparam:
             add_og = True
-            og_fn = ""
 
         if "b" in self.uparam and "norobots" not in vn.flags:
             self.out_headers["X-Robots-Tag"] = "noindex, nofollow"
@@ -7806,6 +7809,7 @@ class HttpCli(object):
                     return self.tx_file("oh_f", ap)  # is no-cache
 
         if icur:
+            assert idx  # type: ignore  # !rm
             mte = vn.flags.get("mte") or {}
             tagset: set[str] = set()
             rd = vrem
@@ -8174,7 +8178,7 @@ class HttpCli(object):
             else:
                 j2a["og_url"] = j2a["og_raw"] = url_base
 
-            if not vn.flags.get("og_no_head"):
+            if "og_no_head" not in vn.flags:
                 ogh = {"twitter:card": "summary"}
 
                 title = str(vn.flags.get("og_title") or "")
@@ -8243,7 +8247,7 @@ class HttpCli(object):
                 while title.endswith(" - "):
                     title = title[:3]
 
-                if vn.flags.get("og_s_title") or not title:
+                if "og_s_title" in vn.flags or not title:
                     title = str(vn.flags.get("og_title") or "")
 
                 for tag, hname in tagmap.items():
