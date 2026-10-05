@@ -673,8 +673,6 @@ class VFS(object):
             if lfn == zs.lower():
                 hit = zs
                 break
-        if not hit:
-            return True  # NFC/NFD or something, can't be helped either way
         if self.log:
             t = "returning 404 due to underlying case-insensitive filesystem:\n  http-req: %r\n  local-fs: %r"
             self.log("vfs", t % (fn, hit))
@@ -2985,6 +2983,22 @@ class AuthSrv(object):
             if vol.flags.get("dots"):
                 for name in vol.axs.uread:
                     vol.axs.udot.add(name)
+
+        zi = 1
+        zs = "; you must also enable --hack-me-bro to accept the total loss of security"
+        if self.args.hack_me_bro:
+            zi = 3
+            zs = ""
+
+        if self.args.smb:
+            t = "smb is enabled; this has serious security issues which will not be fixed"
+            self.log(t + zs, zi)
+            if zs:
+                errors = True
+
+        if self.args.tftp:
+            t = "tftp is enabled; primitive protocol with primitive access-restrictions"
+            self.log(t, 3)
 
         if errors:
             sys.exit(1)

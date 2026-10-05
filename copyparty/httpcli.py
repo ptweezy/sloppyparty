@@ -105,7 +105,6 @@ from .util import (
     read_socket_chunked,
     read_socket_unbounded,
     read_utf8,
-    relchk,
     ren_open,
     runhook,
     s2hms,
