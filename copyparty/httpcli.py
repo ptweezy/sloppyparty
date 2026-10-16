@@ -895,10 +895,9 @@ class HttpCli(object):
             uparam["b"] = ""
             cookies["b"] = ""
 
-        vn, rem = self.asrv.vfs.get(self.vpath, self.uname, False, False)
-        if vn.realpath and ("xdev" in vn.flags or "xvol" in vn.flags):
-            ap = vn.canonical(rem)
-            avn = vn.chk_ap(ap)
+        vn, rem = self.asrv.vfs._get(self.vpath, self.uname, False, False)
+        if vn.realpath and "xvd" in vn.flags:
+            avn = vn.chk_ap(vn.canonical(rem))
         else:
             avn = vn
 
@@ -2485,6 +2484,9 @@ class HttpCli(object):
         if "%" in self.req:
             self.log(" `-- %r" % (self.vpath,))
 
+        if not self.avn:
+            raise Pebkac(403, "no access")
+
         if self.headers.get("expect", "").lower() == "100-continue":
             try:
                 self.s.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
@@ -3840,6 +3842,8 @@ class HttpCli(object):
         fdir = vfs.canonical(rem)
         fn = os.path.join(fdir, sanitized)
 
+        self.asrv.vfs.get(vjoins(vfs.vpath, rem, sanitized), self.uname, False, True)
+
         for hn in ("xbu", "xau"):
             xxu = vfs.flags.get(hn)
             if xxu:
@@ -3996,6 +4000,13 @@ class HttpCli(object):
                 if p_file and not nullwrite:
                     if rnd:
                         fname = rand_name(fdir, fname, rnd)
+
+                    self.can_delete = (
+                        self.uname
+                        in self.asrv.vfs.get(
+                            vjoin(upload_vpath, fname), self.uname, False, True
+                        )[0].axs.udel
+                    )
 
                     abspath = os.path.join(fdir, fname)
                     open_args = {"fdir": fdir, "suffix": suffix, "vf": vfs.flags}
@@ -4354,7 +4365,7 @@ class HttpCli(object):
             bos.makedirs(fp, vf=vfs.flags)
 
         fp = os.path.join(fp, fn)
-        rem = "{}/{}".format(rp, fn).strip("/")
+        rem = vjoin(rp, fn)
         dbv, vrem = vfs.get_dbv(rem)
 
         if not self.can_delete and (
@@ -4371,6 +4382,8 @@ class HttpCli(object):
             self.parser.drop()
             self.reply(response.encode("utf-8"))
             return True
+
+        self.asrv.vfs.get(vjoin(vfs.vpath, rem), self.uname, True, True)
 
         srv_lastmod = -1.0
         srv_lastmod3 = -1
